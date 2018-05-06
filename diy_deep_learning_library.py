@@ -921,7 +921,7 @@ class FFNetwork(object):
         
         # execute training
         for epoch in range(nEpochs):
-            for i,(XBatch,YBatch) in enumerate(self.getBatches(X,Y,batchSize)):
+            for i,(XBatch,YBatch,nBatches) in enumerate(self.getBatches(X,Y,batchSize)):
                 P = self.forwardProp(XBatch)
                 batchLoss = self.loss(P,YBatch)
                 recentLoss += batchLoss
@@ -931,19 +931,23 @@ class FFNetwork(object):
                     averageRecentLoss = recentLoss / displaySteps
                     lossHistory.append(averageRecentLoss)
                     recentLoss = 0
-                    print('Epoch', epoch)
-                    print('Batch', i)
-                    print('Loss averaged over last '+str(displaySteps)+' batches',averageRecentLoss)
+                    print('Epoch: ',str(epoch),'/',str(nEpochs))
+                    print('Batch: ',str(i+1),'/',str(nBatches))
+                    print('Loss averaged over last ',str(displaySteps),
+                          ' batches: ',str(averageRecentLoss))
+                    print('---------------------------------------------------')
         
         # announce end of training
         self.trained = True
         print('---------------------------------------------------')
         print('Training finished.')
-        print('nEpochs:',nEpochs)
-        print('learningRate:',learningRate)
-        print('batchSize:',batchSize)
+        print('nEpochs:',str(nEpochs))
+        print('learningRate:',str(learningRate))
+        print('batchSize:',str(batchSize))
         
-        return lossHistory
+        self.lossHistory = lossHistory
+        
+        return 
         
     def oneHotY(self,y):
         '''One hot vectorizes a target class index list into a [nData,nClasses] array.'''
@@ -967,7 +971,7 @@ class FFNetwork(object):
             XBatch, YBatch = (XShuffled[iBatch*batchSize:(iBatch+1)*batchSize],
                               YShuffled[iBatch*batchSize:(iBatch+1)*batchSize])
         
-            yield XBatch, YBatch
+            yield XBatch, YBatch, nBatches
         
     def forwardProp(self,XBatch):
         '''Executes one forward propagation through the network. Returns the loss averaged over the batch.'''

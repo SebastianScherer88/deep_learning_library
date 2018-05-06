@@ -106,7 +106,7 @@ print('\n ')
 print(neuralNet)
 
 # ---------------------------------
-# [3] Build convolitional network
+# [3] Train convolitional network on mnist data
 # ---------------------------------
 
 # train network
