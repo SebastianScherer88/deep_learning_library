@@ -37,9 +37,9 @@ y_train, y_test = y_train.reshape(-1,1), y_test.reshape(-1,1)
 neuralNet = FFNetwork()
 
 n1 = 300
-dropoutRate1 = 0.5
+dropoutRate1 = 0.4
 n2 = 300
-dropoutRate2 = 0.5
+dropoutRate2 = 0.4
 n3 = 10
 
 neuralNet.addFCLayer(n1,activation='tanh')
@@ -57,9 +57,9 @@ print(neuralNet)
 # ---------------------------------
 
 # train network
-nEpochs = 1
+nEpochs = 2
 learning_rate = 0.5
-regularization_param = 0.0
+regularization_param = 0.1
 optimizer = 'sgd'
 batchSize = 50
 displaySteps = 50

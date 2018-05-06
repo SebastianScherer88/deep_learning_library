@@ -70,19 +70,20 @@ def sigmoidLoss(P,Y):
 class SGD(object):
     '''Class representing the generic stochastic gradient descent algorithm'''
     
-    def __init__(self,eta,gamma,epsilon,lamda):
+    def __init__(self,eta,gamma,epsilon,lamda,batchSize):
         '''eta: learning rate
         lamda: regularization parameter'''
         
         # store relevant optimization hyper-parameters
         self.eta = eta
         self.lamda = lamda
+        self.batchSize = batchSize
         
     def get_parameter_updates(self,DCache):
         '''Takes a gradient cache in dictionary form and computes and stores
         layer parameters updates.'''
-        DeltaWeight = - self.eta * DCache['DWeight'] - self.lamda * DCache['Weight']
-        DeltaBias = - self.eta * DCache['Dbias'] - self.lamda * DCache['bias']
+        DeltaWeight = - self.eta * DCache['DWeight'] - self.lamda * DCache['Weight'] / self.batchSize
+        DeltaBias = - self.eta * DCache['Dbias']
         
         return DeltaWeight, DeltaBias
     
@@ -92,6 +93,7 @@ class SGD(object):
         bio = '\t \t Optimization parameters--------------------------------' \
                 + '\n Learning rate:' + str(self.eta) \
                 + '\n Regularization parameter used:' + str(self.lamda) \
+                + '\n Batch size used: ' + str(self.batchSize) \
                 + '\n Type of optimization used: SGD'
             
         return bio
@@ -980,7 +982,7 @@ class FFNetwork(object):
         recentLoss = 0
         
         # create and attach specified optimizers to layers, also keep one for later reference
-        self.initialize_layer_optimizers(optimizer,eta,gamma,epsilon,lamda)
+        self.initialize_layer_optimizers(optimizer,eta,gamma,epsilon,lamda,batchSize)
         
         # execute training
         for epoch in range(nEpochs):
@@ -1020,7 +1022,7 @@ class FFNetwork(object):
         
         return Y
     
-    def initialize_layer_optimizers(self,optimizer,eta,gamma,epsilon,lamda):
+    def initialize_layer_optimizers(self,optimizer,eta,gamma,epsilon,lamda,batchSize):
         '''Creates and attaches optimizer objects to all network layers carrying optimizable parameters'''
         
         # make sure library supports specified optimization type
@@ -1031,13 +1033,13 @@ class FFNetwork(object):
             optimizer_class = SGD
             
         # attach one optimizer to network for later reference
-        self.most_recent_optimizer_used = optimizer_class(eta,gamma,epsilon,lamda)
+        self.most_recent_optimizer_used = optimizer_class(eta,gamma,epsilon,lamda,batchSize)
         
         # create and attach optimizer to network layers which have optimizable parameters
         for layer in self.layers:
             # check if layer has optimizable parameters
             if layer.has_optimizable_params:
-                layer.optimizer = optimizer_class(eta,gamma,epsilon,lamda)
+                layer.optimizer = optimizer_class(eta,gamma,epsilon,lamda,batchSize)
     
     def getBatches(self,X,Y,batchSize):
         '''Sample randomly from X and Y, then yield batches.'''
