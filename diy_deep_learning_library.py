@@ -73,7 +73,7 @@ def sigmoidLoss(P,Y):
 
 class FcLayer(object):
     '''Object class representing a fully connected layer in a feed-forward neural network'''
-    def __init__(self,n,activation='tanh'):
+    def __init__(self,n,activation='tanh',leak=0):
         self.sizeIn = None
         self.sizeOut = [n]
         
@@ -85,6 +85,7 @@ class FcLayer(object):
             self.activation = (sigmoid,activation)
             self.Dactivation = Dsigmoid
         elif activation == 'relu':
+            self.leak = leak
             self.activation = (relu,activation)
             self.Dactivation = Drelu
         elif activation == 'identity':
@@ -111,11 +112,19 @@ class FcLayer(object):
         return bio
         
     def forwardProp(self):
+        # retrieve previous layer's activation
         A_p = self.previousLayer.cache['A']
+        
+        # calculate this layer's pre-activation
         Z_c = np.dot(A_p,self.Weight) + self.bias
-        #print("From within fully connected layer's forwardProp:")
-        #print("Type of Z_c:", type(Z_c))
-        A_c = self.activation[0](Z_c)
+        
+        # calculate this layer's activation
+        # if using relu activation, use layer's leak attribute
+        if self.activation[1]=='relu':
+            A_c = self.activation[0](Z_c,self.leak)
+        # if not using relu activation, no hyperparameters are needed in this step
+        else:
+            A_c = self.activation[0](Z_c)
         #print("Type of A_c:", type(A_c))
         #print("From within fully connected layer's forwardProp:")
         #print("Shape of previous layer's activation:",A_p.shape)
@@ -126,7 +135,10 @@ class FcLayer(object):
     def getDZ_c(self,DA_c):
         # calculates this layer's DZ. gets called from next layer in network during backprop
         A_c = self.cache['A']
-        self.cache['DZ'] = np.multiply(self.Dactivation(A_c),DA_c)
+        if self.activation[1]=='relu':
+            self.cache['DZ'] = np.multiply(self.Dactivation(A_c,self.leak),DA_c)
+        else:
+            self.cache['DZ'] = np.multiply(self.Dactivation(A_c),DA_c)
         
     def backwardProp(self):
         # get stored activation values
@@ -213,7 +225,8 @@ class ConvLayer(object):
     
     def __init__(self,kernelHeight,kernelWidth,channels,
                  stride,padding='valid',
-                 activation='tanh'):
+                 activation='tanh',
+                 leak=0):
     
         assert padding in ['same','valid']
         assert activation in ['tanh','sigmoid','relu','identity']
@@ -225,6 +238,7 @@ class ConvLayer(object):
             self.activation = (sigmoid,activation)
             self.Dactivation = Dsigmoid
         elif activation == 'relu':
+            self.leak = leak
             self.activation = (relu,activation)
             self.Dactivation = Drelu
         elif activation == 'identity':
@@ -280,13 +294,27 @@ class ConvLayer(object):
                 Z_c[:,:,h,w,0] = Y_hw
         
         Z_c += self.bias
-        A_c = self.activation[0](Z_c)
+        
+        # calculate this layer's activation in case of relu activaions
+        if self.activation[1]=='relu':
+            A_c = self.activation[0](Z_c,self.leak)
+        # calcualte this layer's activation for non-relu activation types
+        else:
+            A_c = self.activation[0](Z_c)
+            
+        # store this layer's activation in cache
         self.cache['A'] = A_c
         
     def getDZ_c(self,DA_c):
         # calculates this layer's DZ. gets called from next layer in network during backprop
         A_c = self.cache['A']
-        self.cache['DZ'] = self.Dactivation(A_c) * DA_c
+        
+        # calculate DL/DZ for current layer in case of relu activation
+        if self.activation[1]=='relu':
+            self.cache['DZ'] = self.Dactivation(A_c,self.leak) * DA_c
+        # calculate DL/DZ for current layer in case of-non relu activation types
+        else:
+            self.cache['DZ'] = self.Dactivation(A_c) * DA_c
         
     def backwardProp(self):
         # get stored activation values
@@ -294,6 +322,7 @@ class ConvLayer(object):
         A_p = self.previousLayer.cache['A']
         batchSize = A_p.shape[0]
         
+        # get curent layer's and previous layer's architectural parameters
         channels_c = self.sizeOut[0]
         height_c = self.sizeOut[1]
         width_c = self.sizeOut[2]
