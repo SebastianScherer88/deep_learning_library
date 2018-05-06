@@ -24,7 +24,6 @@
 #----------------------------------------------------
 
 import numpy as np
-from mnist_classes import get_mnist_data
 
 #----------------------------------------------------
 # [1] Define some computational util functions
@@ -42,11 +41,11 @@ def sigmoid(Z):
 def Dsigmoid(A):
     return np.multiply(A,1 - A)
 
-def relu(z,leak=0):
+def relu(Z,leak=0):
     assert (0 <= leak) and (leak < 0.5)
     return np.max(leak * Z,Z)
 
-def Drelu(A):
+def Drelu(A,leak=0):
     t1 = (A > 0) * 1
     t2 = (A <= 0) * leak
     return t1 + t2
@@ -539,7 +538,7 @@ class FcToConv(object):
     def forwardProp(self):
         A_p = self.previousLayer.cache['A']
         batchSize = A_p.shape[0]
-        aShape = [batchSize,self.sizeOut[0],sizeOut[1],sizeOut[2],1]
+        aShape = [batchSize,self.sizeOut[0],self.sizeOut[1],self.sizeOut[2],1]
         A_c = Z_c = A_p.reshape(aShape)
         #print("From within reshape (conv -> fc) layer's forwardProp:")
         #print("Shape of previous layer's activation:",A_p.shape)
@@ -899,7 +898,7 @@ class FFNetwork(object):
                 recentLoss += batchLoss
                 self.backwardProp(learningRate,YBatch)
                 
-                if (i % displayStep) == 0 and (i != 0):
+                if (i % displaySteps) == 0 and (i != 0):
                     averageRecentLoss = recentLoss / displaySteps
                     lossHistory.append(averageRecentLoss)
                     recentLoss = 0
