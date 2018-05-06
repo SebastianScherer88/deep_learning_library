@@ -57,7 +57,7 @@ print(neuralNet)
 # ---------------------------------
 
 # train network
-nEpochs = 10
+nEpochs = 1
 learningRate = 0.5
 batchSize = 50
 displayStep = 50
