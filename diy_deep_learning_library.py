@@ -758,10 +758,6 @@ class Dropout(object):
         
         return
         
-    def updateLayerParams(self,DCache):
-        # bogus function for layer consistency from the neural net class point of view
-        return
-        
     def makeReady(self,previousLayer=None,nextLayer=None):
         self.previousLayer = previousLayer
         self.sizeIn = self.sizeOut = self.previousLayer.sizeOut
@@ -1076,8 +1072,11 @@ class FFNetwork(object):
         self.layers[-1].cache['DZ'] = (P - YBatch) #/ YBatch.shape[0]
         
         for i,layer in enumerate(reversed(self.layers)):
+            # propagate loss function gradient backwards through network
             layerDCache = layer.backwardProp()
-            layer.updateLayerParams(layerDCache)
+            if layer.has_optimizable_params:
+                # where sensible, update parameters
+                layer.updateLayerParams(layerDCache)
             
     def predict(self,X):
         '''If model is trained, performs forward prop and returns the prediction array.'''
