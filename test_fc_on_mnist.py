@@ -58,12 +58,17 @@ print(neuralNet)
 
 # train network
 nEpochs = 1
-learningRate = 0.5
+learning_rate = 0.5
+regularization_param = 0.0
+optimizer = 'sgd'
 batchSize = 50
-displayStep = 50
+displaySteps = 50
 oneHotY = True
 
-neuralNet.trainNetwork(nEpochs,learningRate,batchSize,X_train,y_train,displayStep,oneHotY)
+neuralNet.trainNetwork(X_train,y_train,
+                       nEpochs=nEpochs,batchSize=batchSize,
+                       optimizer=optimizer,eta=learning_rate,lamda=regularization_param,
+                       displaySteps=displaySteps,oneHotY=oneHotY)
 
 # ---------------------------------
 # [4] Evaluate fully connected net on mnist data test set

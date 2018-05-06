@@ -116,7 +116,7 @@ batchSize = 50
 displayStep = 10
 oneHotY = True
 
-neuralNet.trainNetwork(nEpochs,learningRate,batchSize,X_train,y_train,displayStep,oneHotY)
+neuralNet.trainNetwork(X_train,y_train,nEpochs,optimizer,eta=0.03,lamda=0.5,batchSize,,displayStep,oneHotY)
 
 # ---------------------------------
 # [4] Evaluate convolutional network on mnist test data
