@@ -408,16 +408,18 @@ class ConvLayer(object):
                 Y_hw = np.sum(X_hw,axis=1)
 
                 DA_p[:,hStart:hEnd,wStart:wEnd,:,0] += Y_hw
-                
-        #DWeight /= DA_p.shape[0]
+
+        # make previous layer produce its own DL/DZ
+        DA_p = np.transpose(DA_p,(0,3,1,2,4))
+        self.previousLayer.getDZ_c(DA_p)
         
+        # for this layer, calculate DL/Db
         Dbias = np.mean(np.sum(DZ_c,axis=(2,3,4)),axis=0)
         Dbias = Dbias[np.newaxis,:,np.newaxis,np.newaxis,np.newaxis]
         
-        Dcache = {'DWeight':DWeight,'Dbias':Dbias}
-        
-        DA_p = np.transpose(DA_p,(0,3,1,2,4))
-        self.previousLayer.getDZ_c(DA_p)
+        # for this layer, store derivatives and weights in cache for the optimizer
+        Dcache = {'DWeight':DWeight,'Dbias':Dbias, 
+                  'Weight':self.Weight, 'bias':self.bias}
         
         return Dcache
     

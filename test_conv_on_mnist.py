@@ -110,13 +110,19 @@ print(neuralNet)
 # ---------------------------------
 
 # train network
-nEpochs = 1
-learningRate = 0.5
+nEpochs = 2
+learning_rate = 0.5
+regularization_param = 0.1
+optimizer = 'sgd'
 batchSize = 50
-displayStep = 10
+displaySteps = 50
 oneHotY = True
 
-neuralNet.trainNetwork(X_train,y_train,nEpochs,optimizer,eta=0.03,lamda=0.5,batchSize,,displayStep,oneHotY)
+neuralNet.trainNetwork(X_train,y_train,
+                       nEpochs=nEpochs,batchSize=batchSize,
+                       optimizer=optimizer,eta=learning_rate,lamda=regularization_param,
+                       displaySteps=displaySteps,oneHotY=oneHotY)
+
 
 # ---------------------------------
 # [4] Evaluate convolutional network on mnist test data
