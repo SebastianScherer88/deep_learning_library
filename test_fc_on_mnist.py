@@ -19,22 +19,26 @@ Created on Sun May  6 11:45:34 2018
 # [1] Imports
 # ---------------------------------
 
+import os
+os.chdir('C:\\Users\\bettmensch\\GitReps\\deep_learning_library')
 import numpy as np
-from mnist_classes import get_mnist_data
-from diy_deep_learning_library import FFNetwork
+import mnist_classes
+import diy_deep_learning_library
+import importlib
+# for debugging: importlib.reload(diy_deep_learning_library)
 
 # ---------------------------------
 # [2] Build fullly connected net
 # ---------------------------------
 
 # get data
-X_train, X_test, y_train, y_test = get_mnist_data()
+X_train, X_test, y_train, y_test = mnist_classes.get_mnist_data()
 
 X_train, X_test = np.array(X_train), np.array(X_test)
 y_train, y_test = y_train.reshape(-1,1), y_test.reshape(-1,1)
 
 # build network
-neuralNet = FFNetwork()
+neuralNet = diy_deep_learning_library.FFNetwork()
 
 n1 = 300
 dropoutRate1 = 0.4
@@ -60,6 +64,7 @@ print(neuralNet)
 nEpochs = 2
 learning_rate = 0.5
 regularization_param = 0.1
+momentum_param = 0.3
 optimizer = 'sgd'
 batchSize = 50
 displaySteps = 50
@@ -67,7 +72,7 @@ oneHotY = True
 
 neuralNet.trainNetwork(X_train,y_train,
                        nEpochs=nEpochs,batchSize=batchSize,
-                       optimizer=optimizer,eta=learning_rate,lamda=regularization_param,
+                       optimizer=optimizer,eta=learning_rate,lamda=regularization_param,gamma=momentum_param,
                        displaySteps=displaySteps,oneHotY=oneHotY)
 
 # ---------------------------------

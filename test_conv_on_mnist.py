@@ -25,15 +25,17 @@ Created on Sun May  6 11:55:22 2018
 # ---------------------------------
 
 import numpy as np
-from mnist_classes import get_mnist_data
-from diy_deep_learning_library import FFNetwork
+import mnist_classes
+import diy_deep_learning_library
+import importlib
+# for debugging: importlib.reload(diy_deep_learning_library)
 
 # ---------------------------------
 # [2] Build convolitional network
 # ---------------------------------
 
 # get data
-X_train, X_test, y_train, y_test = get_mnist_data()
+X_train, X_test, y_train, y_test = mnist_classes.get_mnist_data()
 
 print('Shape of X_train:',X_train.shape)
 print('Shape of y_train:',y_train.shape)
@@ -45,7 +47,7 @@ print('Shape of X_train:',X_train.shape)
 print('Shape of y_train:',y_train.shape)
 
 # build network
-neuralNet = FFNetwork(2)
+neuralNet = diy_deep_learning_library.FFNetwork(2)
 
 kernelSize1 = 5
 channels1 = 6
@@ -113,6 +115,7 @@ print(neuralNet)
 nEpochs = 2
 learning_rate = 0.5
 regularization_param = 0.1
+momentum_param = 0.3
 optimizer = 'sgd'
 batchSize = 50
 displaySteps = 50
@@ -120,7 +123,7 @@ oneHotY = True
 
 neuralNet.trainNetwork(X_train,y_train,
                        nEpochs=nEpochs,batchSize=batchSize,
-                       optimizer=optimizer,eta=learning_rate,lamda=regularization_param,
+                       optimizer=optimizer,eta=learning_rate,lamda=regularization_param,gamma=momentum_param,
                        displaySteps=displaySteps,oneHotY=oneHotY)
 
 

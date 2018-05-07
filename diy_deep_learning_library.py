@@ -97,7 +97,55 @@ class SGD(object):
                 + '\n Type of optimization used: SGD'
             
         return bio
+    
+class SGDMomentum(object):
+    '''Class representing the stochastic gradient descent with momentum algorithm'''
+    
+    def __init__(self,eta,gamma,epsilon,lamda,batchSize):
+        '''eta: learning rate parameter (goes with cost function gradient)
+        gamma: momentum coefficient (goes with previous parameter update)
+        lamda: regularization parameter
+        batchSize: batch size used during network weight optimization'''
         
+        # store relevant optimization hyper-parameters
+        self.eta = eta
+        self.gamma = gamma
+        self.lamda = lamda
+        self.batchSize = batchSize
+        
+        # initialize storage for previous updates
+        self.DeltaWeightPrevious = 0
+        self.DeltaBiasPrevious = 0
+        
+    def get_parameter_updates(self,Dcache):
+        '''Takes a gradient cache in dictionary form and computes and stores
+        layer parameters updates. Stores the current updates for next iteration.'''
+        
+        # get weight update
+        DeltaWeight = - self.eta * Dcache['DWeight'] \
+                        - self.gamma * self.DeltaWeightPrevious \
+                        - self.lamda * Dcache['Weight'] / self.batchSize
+        
+        # get bias update
+        DeltaBias = - self.eta * Dcache['Dbias'] \
+                        - self.gamma * self.DeltaBiasPrevious
+
+        # store updates for next iteration's momentum contribution
+        self.DeltaWeightPrevious = DeltaWeight
+        self.DeltaBiasPrevious = DeltaBias
+        
+        return DeltaWeight, DeltaBias
+    
+    def __str__(self):
+        '''Returns a string with bio of SGD optimizer.'''
+
+        bio = '\t \t Optimization parameters--------------------------------' \
+                + '\n Learning rate:' + str(self.eta) \
+                + '\n Regularization parameter used:' + str(self.lamda) \
+                + '\n Batch size used: ' + str(self.batchSize) \
+                + '\n Type of optimization used: SGD'
+            
+        return bio
     
 #----------------------------------------------------
 # [2] Fully connected layer class
@@ -869,55 +917,79 @@ class FFNetwork(object):
     def addFCLayer(self,n,activation='tanh'):
         '''Adds a fully connected layer to the neural network.'''
         
-        fullyConnectedLayer = FcLayer(n,activation)
-        
-        self.layers.append(fullyConnectedLayer)
+        if not self.finalState:
+            # if network has not been fixated yet, create fully connected layer
+            # and add to network
+            fullyConnectedLayer = FcLayer(n,activation)
+            self.layers.append(fullyConnectedLayer)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
         
     def addConvLayer(self,kernelHeight,kernelWidth,channels,stride,padding='valid',activation='tanh'):
         '''Adds a convolution layer to the neural network.'''
         
-        convolutionLayer = ConvLayer(kernelHeight,
-                                     kernelWidth,
-                                     channels,
-                                     stride,
-                                     padding,activation)
-        
-        self.layers.append(convolutionLayer)
+        if not self.finalState:
+            # if network has not been fixated yet, create convolution layer
+            # and add to network
+            convolutionLayer = ConvLayer(kernelHeight,
+                                         kernelWidth,
+                                         channels,
+                                         stride,
+                                         padding,activation)
+            self.layers.append(convolutionLayer)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
         
     def addPoolingLayer(self,poolingHeight,poolingWidth,stride,padding='valid',poolingType='max'):
         '''Adds a pooling layer to the neural network. Recommended after convolutional layers.'''
         
-        poolingLayer = PoolingLayer(poolingHeight,
-                                    poolingWidth,
-                                    stride,
-                                    padding,
-                                    poolingType)
-        
-        self.layers.append(poolingLayer)
+        if not self.finalState:
+            # if network has not been fixated yet, create convolution layer
+            # and add to network
+            poolingLayer = PoolingLayer(poolingHeight,
+                                        poolingWidth,
+                                        stride,
+                                        padding,
+                                        poolingType)
+            self.layers.append(poolingLayer)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
 
         
     def addFCToConvReshapeLayer(self,convDims):
         '''Adds a reshaping layer to the neural network. Necessary to link up a fully connected layer
         with a subsequent convolution layer.'''
         
-        shapeFullyConnectedToConvolution = FcToConv(convDims)
-        
-        self.layers.append(shapeFullyConnectedToConvolution)
+        if not self.finalState:
+            # if network has not been fixated yet, create convolution layer
+            # and add to network
+            shapeFullyConnectedToConvolution = FcToConv(convDims)
+            self.layers.append(shapeFullyConnectedToConvolution)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
         
     def addConvToFCReshapeLayer(self,n):
         '''Adds a reshaping layer to the neural network. Necessary to link up a convolutional layer with a 
         subsequent fully connected layer.'''
         
-        shapeConvolutionalToFullyConnected = ConvToFC(n)
-        
-        self.layers.append(shapeConvolutionalToFullyConnected)
+        if not self.finalState:
+            # if network has not been fixated yet, create convolution layer
+            # and add to network
+            shapeConvolutionalToFullyConnected = ConvToFC(n)
+            self.layers.append(shapeConvolutionalToFullyConnected)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
         
     def addDropoutLayer(self,dropoutRate):
         '''Adds a dropout layer.'''
         
-        dropoutLayer = Dropout(dropoutRate)
-        
-        self.layers.append(dropoutLayer)
+        if not self.finalState:
+            # if network has not been fixated yet, create convolution layer
+            # and add to network
+            dropoutLayer = Dropout(dropoutRate)
+            self.layers.append(dropoutLayer)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
         
     def fixateNetwork(self,XSample):
         '''Fixes model, finalising its blue-print.
@@ -999,7 +1071,7 @@ class FFNetwork(object):
                     lossHistory.append(averageRecentLoss)
                     recentLoss = 0
                     print('Epoch: ',str(epoch+1),'/',str(nEpochs))
-                    print('Batch: ',str(i),'/',str(nBatches))
+                    print('Batch: ',str(i+1),'/',str(nBatches))
                     print('Loss averaged over last ',str(displaySteps),
                           ' batches: ',str(averageRecentLoss))
                     print('---------------------------------------------------')
@@ -1032,7 +1104,7 @@ class FFNetwork(object):
         
         # get optimizer creator, i.e. 'prep optimizer cloning machine'
         if optimizer == 'sgd':
-            optimizer_class = SGD
+            optimizer_class = SGDMomentum
             
         # attach one optimizer to network for later reference
         self.most_recent_optimizer_used = optimizer_class(eta,gamma,epsilon,lamda,batchSize)
