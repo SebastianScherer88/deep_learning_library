@@ -66,7 +66,56 @@ def softmaxLoss(P,Y):
 
 def sigmoidLoss(P,Y):
     return -np.mean(np.sum(np.multiply(Y,np.log(P)) + np.multiply((1 - Y),np.log(1 - P)),axis=1))
+    
+class SGD(object):
+    '''Class representing the stochastic gradient descent with momentum algorithm'''
+    
+    def __init__(self,eta,gamma,epsilon,lamda,batchSize):
+        '''eta: learning rate parameter (goes with cost function gradient)
+        gamma: momentum coefficient (goes with previous parameter update)
+        lamda: regularization parameter
+        batchSize: batch size used during network weight optimization'''
+        
+        # store relevant optimization hyper-parameters
+        self.eta = eta
+        self.gamma = gamma
+        self.lamda = lamda
+        self.batchSize = batchSize
+        
+        # initialize storage for previous updates
+        self.DeltaWeightPrevious = 0
+        self.DeltaBiasPrevious = 0
+        
+    def get_parameter_updates(self,Dcache):
+        '''Takes a gradient cache in dictionary form and computes and stores
+        layer parameters updates. Stores the current updates for next iteration.'''
+        
+        # get weight update
+        DeltaWeight = - self.eta * Dcache['DWeight'] \
+                        - self.gamma * self.DeltaWeightPrevious \
+                        - self.lamda * Dcache['Weight'] / self.batchSize
+        
+        # get bias update
+        DeltaBias = - self.eta * Dcache['Dbias'] \
+                        - self.gamma * self.DeltaBiasPrevious
 
+        # store updates for next iteration's momentum contribution
+        self.DeltaWeightPrevious = DeltaWeight
+        self.DeltaBiasPrevious = DeltaBias
+        
+        return DeltaWeight, DeltaBias
+    
+    def __str__(self):
+        '''Returns a string with bio of SGD optimizer.'''
+
+        bio = '\t \t Optimization parameters--------------------------------' \
+                + '\n Learning rate:' + str(self.eta) \
+                + '\n Regularization parameter used:' + str(self.lamda) \
+                + '\n Batch size used: ' + str(self.batchSize) \
+                + '\n Type of optimization used: SGD'
+            
+        return bio
+    
 #----------------------------------------------------
 # [2] Fully connected layer class
 #----------------------------------------------------
@@ -93,12 +142,19 @@ class FcLayer(object):
             self.Dactivation = Didentity
         elif activation == 'softmax': # definitely output layer, so no need for Dactivation
             self.activation = (softmax,activation)
-            
+        
+        # initialize layer parameters and activation cache
         self.Weight = None
         self.bias = None
         self.cache = {'A':None,'DZ':None}
+        
+        # initialize neighbouring layer contact points, i.e 'buy address book'
         self.previousLayer = None
         self.nextLayer = None
+        
+        # set up optimization configs
+        self.optimizer = None
+        self.has_optimizable_params = True
         
     def __str__(self):
         '''Returns a string with bio of layer.'''
@@ -144,20 +200,26 @@ class FcLayer(object):
         # get stored activation values
         DZ_c = self.cache['DZ']
         A_p = self.previousLayer.cache['A']
-        # calculate weight gradients
-        DWeight = np.dot(A_p.T,DZ_c) / A_p.shape[0]
-        Dbias = np.mean(DZ_c,axis=0)
-        Dcache = {'DWeight':DWeight,'Dbias':Dbias}
+        
         # calculate DZ_p, i.e. DZ of previous layer in network
         DA_p = np.dot(DZ_c,self.Weight.T)
         self.previousLayer.getDZ_c(DA_p)
         
+        # calculate weight gradients
+        DWeight = np.dot(A_p.T,DZ_c) / A_p.shape[0]
+        Dbias = np.mean(DZ_c,axis=0)
+        Dcache = {'DWeight':DWeight,'Dbias':Dbias, 
+                  'Weight':self.Weight, 'bias':self.bias}
+        
         return Dcache
         
-    def updateLayerParams(self,learningRate,Dcache):
-        DWeight, Dbias = Dcache['DWeight'], Dcache['Dbias']
-        self.Weight -= learningRate * DWeight
-        self.bias -= learningRate * Dbias
+    def updateLayerParams(self,Dcache):
+        # retrieve updates for layer's weights and bias using layer's optimizer
+        DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(Dcache)
+        
+        # update parameters with respective updates obtained from optimizer
+        self.Weight += DeltaWeight
+        self.bias += DeltaBias
         
     def makeReady(self,previousLayer=None,nextLayer=None):
         self.previousLayer = previousLayer
@@ -255,6 +317,10 @@ class ConvLayer(object):
         self.cache = {'A':None,'DZ':None}
         self.previousLayer = None
         self.nextLayer = None
+        
+        # set up optimization configs
+        self.optimizer = None
+        self.has_optimizable_params = True
         
     def __str__(self):
         '''Returns a string with bio of layer.'''
@@ -359,23 +425,28 @@ class ConvLayer(object):
                 Y_hw = np.sum(X_hw,axis=1)
 
                 DA_p[:,hStart:hEnd,wStart:wEnd,:,0] += Y_hw
-                
-        #DWeight /= DA_p.shape[0]
-        
-        Dbias = np.mean(np.sum(DZ_c,axis=(2,3,4)),axis=0)
-        Dbias = Dbias[np.newaxis,:,np.newaxis,np.newaxis,np.newaxis]
-        
-        Dcache = {'DWeight':DWeight,'Dbias':Dbias}
-        
+
+        # make previous layer produce its own DL/DZ
         DA_p = np.transpose(DA_p,(0,3,1,2,4))
         self.previousLayer.getDZ_c(DA_p)
         
+        # for this layer, calculate DL/Db
+        Dbias = np.mean(np.sum(DZ_c,axis=(2,3,4)),axis=0)
+        Dbias = Dbias[np.newaxis,:,np.newaxis,np.newaxis,np.newaxis]
+        
+        # for this layer, store derivatives and weights in cache for the optimizer
+        Dcache = {'DWeight':DWeight,'Dbias':Dbias, 
+                  'Weight':self.Weight, 'bias':self.bias}
+        
         return Dcache
     
-    def updateLayerParams(self,learningRate,Dcache):
-        DWeight, Dbias = Dcache['DWeight'], Dcache['Dbias']
-        self.Weight -= learningRate * DWeight
-        self.bias -= learningRate * Dbias
+    def updateLayerParams(self,Dcache):
+        # retrieve updates for layer's weights and bias using layer's optimizer
+        DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(Dcache)
+        
+        # update parameters with respective updates obtained from optimizer
+        self.Weight += DeltaWeight
+        self.bias += DeltaBias
     
     def makeReady(self,previousLayer=None,nextLayer=None):
         self.previousLayer = previousLayer
@@ -423,6 +494,9 @@ class PoolingLayer(object):
         self.cache = {'A':None,'DZ':None}
         self.previousLayer = None
         self.nextLayer = None
+        
+        # set up optimization configs
+        self.has_optimizable_params = False
         
     def __str__(self):
         '''Returns a string with bio of layer.'''
@@ -516,10 +590,6 @@ class PoolingLayer(object):
         self.previousLayer.getDZ_c(DA_p)
         
         return
-        
-    def updateLayerParams(self,learningRate,Dcache):
-        """Bogus class to make neural network's backprop more homogenuous"""
-        return
     
     def makeReady(self,previousLayer=None,nextLayer=None):
         self.previousLayer = previousLayer
@@ -554,6 +624,9 @@ class FcToConv(object):
         
         [convChannels,convHeight,convWidth] = convDims
         self.sizeOut = [convChannels,convHeight,convWidth]
+        
+        # set up optimization configs
+        self.has_optimizable_params = False
         
     def __str__(self):
         '''Returns a string with bio of layer.'''
@@ -590,10 +663,6 @@ class FcToConv(object):
         
         return
     
-    def updateLayerParams(self,learningRate,Dcache):
-        # bogus function for layer consistency from the neural net class point of view
-        return
-    
     def makeReady(self,previousLayer=None,nextLayer=None):
         self.previousLayer = previousLayer
         self.sizeIn = self.previousLayer.sizeOut
@@ -617,6 +686,9 @@ class ConvToFC(object):
         
         self.sizeIn = None
         self.sizeOut = [n]
+        
+        # set up optimization configs
+        self.has_optimizable_params = False
         
     def __str__(self):
         '''Returns a string with bio of layer.'''
@@ -654,10 +726,6 @@ class ConvToFC(object):
         
         return
     
-    def updateLayerParams(self,learningRate,Dcache):
-        # bogus function for layer consistency from the neural net class point of view
-        return
-    
     def makeReady(self,previousLayer=None,nextLayer=None):
         self.previousLayer = previousLayer
         self.sizeIn = self.previousLayer.sizeOut
@@ -672,10 +740,18 @@ class Dropout(object):
     '''Dropout layer acting between "real" network layers.'''
     
     def __init__(self,dropoutRate):
+        # set layer specific (non-optimizable) parameter
         self.dropoutRate = dropoutRate
+        
+        # initalize activation cache
         self.cache = {'A':None,'DZ':None,'outDropper':None}
+        
+        # initialize neighbouring layer contact points, i.e. 'buy address book'
         self.previousLayer = None
         self.nextLayer = None
+        
+        # setup optimization config
+        self.has_optimizable_params = False
         
     def __str__(self):
         '''Returns a string with bio of layer.'''
@@ -685,7 +761,6 @@ class Dropout(object):
                 + '\n Shape of input/output data: ' + str(self.sizeOut)
             
         return bio
-        
         
     def forwardProp(self):
         A_p = self.previousLayer.cache['A']
@@ -704,10 +779,6 @@ class Dropout(object):
         DA_p = np.multiply(DZ_c,outDropper)
         self.previousLayer.getDZ_c(DA_p)
         
-        return
-        
-    def updateLayerParams(self,learningRate,Dcache):
-        # bogus function for layer consistency from the neural net class point of view
         return
         
     def makeReady(self,previousLayer=None,nextLayer=None):
@@ -815,55 +886,79 @@ class FFNetwork(object):
     def addFCLayer(self,n,activation='tanh'):
         '''Adds a fully connected layer to the neural network.'''
         
-        fullyConnectedLayer = FcLayer(n,activation)
-        
-        self.layers.append(fullyConnectedLayer)
+        if not self.finalState:
+            # if network has not been fixated yet, create fully connected layer
+            # and add to network
+            fullyConnectedLayer = FcLayer(n,activation)
+            self.layers.append(fullyConnectedLayer)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
         
     def addConvLayer(self,kernelHeight,kernelWidth,channels,stride,padding='valid',activation='tanh'):
         '''Adds a convolution layer to the neural network.'''
         
-        convolutionLayer = ConvLayer(kernelHeight,
-                                     kernelWidth,
-                                     channels,
-                                     stride,
-                                     padding,activation)
-        
-        self.layers.append(convolutionLayer)
+        if not self.finalState:
+            # if network has not been fixated yet, create convolution layer
+            # and add to network
+            convolutionLayer = ConvLayer(kernelHeight,
+                                         kernelWidth,
+                                         channels,
+                                         stride,
+                                         padding,activation)
+            self.layers.append(convolutionLayer)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
         
     def addPoolingLayer(self,poolingHeight,poolingWidth,stride,padding='valid',poolingType='max'):
         '''Adds a pooling layer to the neural network. Recommended after convolutional layers.'''
         
-        poolingLayer = PoolingLayer(poolingHeight,
-                                    poolingWidth,
-                                    stride,
-                                    padding,
-                                    poolingType)
-        
-        self.layers.append(poolingLayer)
+        if not self.finalState:
+            # if network has not been fixated yet, create convolution layer
+            # and add to network
+            poolingLayer = PoolingLayer(poolingHeight,
+                                        poolingWidth,
+                                        stride,
+                                        padding,
+                                        poolingType)
+            self.layers.append(poolingLayer)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
 
         
     def addFCToConvReshapeLayer(self,convDims):
         '''Adds a reshaping layer to the neural network. Necessary to link up a fully connected layer
         with a subsequent convolution layer.'''
         
-        shapeFullyConnectedToConvolution = FcToConv(convDims)
-        
-        self.layers.append(shapeFullyConnectedToConvolution)
+        if not self.finalState:
+            # if network has not been fixated yet, create convolution layer
+            # and add to network
+            shapeFullyConnectedToConvolution = FcToConv(convDims)
+            self.layers.append(shapeFullyConnectedToConvolution)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
         
     def addConvToFCReshapeLayer(self,n):
         '''Adds a reshaping layer to the neural network. Necessary to link up a convolutional layer with a 
         subsequent fully connected layer.'''
         
-        shapeConvolutionalToFullyConnected = ConvToFC(n)
-        
-        self.layers.append(shapeConvolutionalToFullyConnected)
+        if not self.finalState:
+            # if network has not been fixated yet, create convolution layer
+            # and add to network
+            shapeConvolutionalToFullyConnected = ConvToFC(n)
+            self.layers.append(shapeConvolutionalToFullyConnected)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
         
     def addDropoutLayer(self,dropoutRate):
         '''Adds a dropout layer.'''
         
-        dropoutLayer = Dropout(dropoutRate)
-        
-        self.layers.append(dropoutLayer)
+        if not self.finalState:
+            # if network has not been fixated yet, create convolution layer
+            # and add to network
+            dropoutLayer = Dropout(dropoutRate)
+            self.layers.append(dropoutLayer)
+        else:
+            print('The network has already been fixated. No further layers can be added.')
         
     def fixateNetwork(self,XSample):
         '''Fixes model, finalising its blue-print.
@@ -907,7 +1002,17 @@ class FFNetwork(object):
         
         self.finalState = True
         
-    def trainNetwork(self,nEpochs,learningRate,batchSize,X,y,displaySteps=50,oneHotY = True):
+    def trainNetwork(self,
+                     X,y,
+                     nEpochs=5,
+                     batchSize=25,
+                     optimizer='sgd',
+                     eta=0.001,
+                     gamma=0.99,
+                     epsilon=0.0000001,
+                     lamda=0,
+                     displaySteps=50,
+                     oneHotY = True):
         '''Trains the neural network using naive gradient descent.'''
         # vectorize Y to one-hot format if needed (default is True)
         if oneHotY:
@@ -919,19 +1024,22 @@ class FFNetwork(object):
         lossHistory = []
         recentLoss = 0
         
+        # create and attach specified optimizers to layers, also keep one for later reference
+        self.initialize_layer_optimizers(optimizer,eta,gamma,epsilon,lamda,batchSize)
+        
         # execute training
         for epoch in range(nEpochs):
             for i,(XBatch,YBatch,nBatches) in enumerate(self.getBatches(X,Y,batchSize)):
                 P = self.forwardProp(XBatch)
                 batchLoss = self.loss(P,YBatch)
                 recentLoss += batchLoss
-                self.backwardProp(learningRate,YBatch)
+                self.backwardProp(YBatch)
                 
-                if (i % displaySteps) == 0 and (i != 0):
+                if ((i+1) % displaySteps) == 0:
                     averageRecentLoss = recentLoss / displaySteps
                     lossHistory.append(averageRecentLoss)
                     recentLoss = 0
-                    print('Epoch: ',str(epoch),'/',str(nEpochs))
+                    print('Epoch: ',str(epoch+1),'/',str(nEpochs))
                     print('Batch: ',str(i+1),'/',str(nBatches))
                     print('Loss averaged over last ',str(displaySteps),
                           ' batches: ',str(averageRecentLoss))
@@ -942,7 +1050,7 @@ class FFNetwork(object):
         print('---------------------------------------------------')
         print('Training finished.')
         print('nEpochs:',str(nEpochs))
-        print('learningRate:',str(learningRate))
+        print('Optimizer used:',str(self.most_recent_optimizer_used))
         print('batchSize:',str(batchSize))
         
         self.lossHistory = lossHistory
@@ -956,6 +1064,25 @@ class FFNetwork(object):
         Y = np.eye(nClasses)[y.reshape(-1)]
         
         return Y
+    
+    def initialize_layer_optimizers(self,optimizer,eta,gamma,epsilon,lamda,batchSize):
+        '''Creates and attaches optimizer objects to all network layers carrying optimizable parameters'''
+        
+        # make sure library supports specified optimization type
+        assert optimizer in ['sgd']
+        
+        # get optimizer creator, i.e. 'prep optimizer cloning machine'
+        if optimizer == 'sgd':
+            optimizer_class = SGD
+            
+        # attach one optimizer to network for later reference
+        self.most_recent_optimizer_used = optimizer_class(eta,gamma,epsilon,lamda,batchSize)
+        
+        # create and attach optimizer to network layers which have optimizable parameters
+        for layer in self.layers:
+            # check if layer has optimizable parameters
+            if layer.has_optimizable_params:
+                layer.optimizer = optimizer_class(eta,gamma,epsilon,lamda,batchSize)
     
     def getBatches(self,X,Y,batchSize):
         '''Sample randomly from X and Y, then yield batches.'''
@@ -985,15 +1112,18 @@ class FFNetwork(object):
             
         return P
         
-    def backwardProp(self,learningRate,YBatch):
-        '''Executes one backward propagation through the network. Returns the network's parameter's gradients'''
+    def backwardProp(self,YBatch):
+        '''Executes one backward propagation through the network. Updates the network's weights.'''
         
         P = self.layers[-1].cache['A']
         self.layers[-1].cache['DZ'] = (P - YBatch) #/ YBatch.shape[0]
         
         for i,layer in enumerate(reversed(self.layers)):
-            layerDCache = layer.backwardProp()
-            layer.updateLayerParams(learningRate,layerDCache)
+            # propagate loss function gradient backwards through network
+            layerDcache = layer.backwardProp()
+            if layer.has_optimizable_params:
+                # where sensible, update parameters
+                layer.updateLayerParams(layerDcache)
             
     def predict(self,X):
         '''If model is trained, performs forward prop and returns the prediction array.'''
