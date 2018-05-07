@@ -79,11 +79,11 @@ class SGD(object):
         self.lamda = lamda
         self.batchSize = batchSize
         
-    def get_parameter_updates(self,DCache):
+    def get_parameter_updates(self,Dcache):
         '''Takes a gradient cache in dictionary form and computes and stores
         layer parameters updates.'''
-        DeltaWeight = - self.eta * DCache['DWeight'] - self.lamda * DCache['Weight'] / self.batchSize
-        DeltaBias = - self.eta * DCache['Dbias']
+        DeltaWeight = - self.eta * Dcache['DWeight'] - self.lamda * Dcache['Weight'] / self.batchSize
+        DeltaBias = - self.eta * Dcache['Dbias']
         
         return DeltaWeight, DeltaBias
     
@@ -196,9 +196,9 @@ class FcLayer(object):
         
         return Dcache
         
-    def updateLayerParams(self,DCache):
+    def updateLayerParams(self,Dcache):
         # retrieve updates for layer's weights and bias using layer's optimizer
-        DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(DCache)
+        DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(Dcache)
         
         # update parameters with respective updates obtained from optimizer
         self.Weight += DeltaWeight
@@ -300,6 +300,10 @@ class ConvLayer(object):
         self.cache = {'A':None,'DZ':None}
         self.previousLayer = None
         self.nextLayer = None
+        
+        # set up optimization configs
+        self.optimizer = None
+        self.has_optimizable_params = True
         
     def __str__(self):
         '''Returns a string with bio of layer.'''
@@ -417,10 +421,13 @@ class ConvLayer(object):
         
         return Dcache
     
-    def updateLayerParams(self,learningRate,Dcache):
-        DWeight, Dbias = Dcache['DWeight'], Dcache['Dbias']
-        self.Weight -= learningRate * DWeight
-        self.bias -= learningRate * Dbias
+    def updateLayerParams(self,Dcache):
+        # retrieve updates for layer's weights and bias using layer's optimizer
+        DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(Dcache)
+        
+        # update parameters with respective updates obtained from optimizer
+        self.Weight += DeltaWeight
+        self.bias += DeltaBias
     
     def makeReady(self,previousLayer=None,nextLayer=None):
         self.previousLayer = previousLayer
@@ -468,6 +475,9 @@ class PoolingLayer(object):
         self.cache = {'A':None,'DZ':None}
         self.previousLayer = None
         self.nextLayer = None
+        
+        # set up optimization configs
+        self.has_optimizable_params = False
         
     def __str__(self):
         '''Returns a string with bio of layer.'''
@@ -561,10 +571,6 @@ class PoolingLayer(object):
         self.previousLayer.getDZ_c(DA_p)
         
         return
-        
-    def updateLayerParams(self,learningRate,Dcache):
-        """Bogus class to make neural network's backprop more homogenuous"""
-        return
     
     def makeReady(self,previousLayer=None,nextLayer=None):
         self.previousLayer = previousLayer
@@ -599,6 +605,9 @@ class FcToConv(object):
         
         [convChannels,convHeight,convWidth] = convDims
         self.sizeOut = [convChannels,convHeight,convWidth]
+        
+        # set up optimization configs
+        self.has_optimizable_params = False
         
     def __str__(self):
         '''Returns a string with bio of layer.'''
@@ -635,10 +644,6 @@ class FcToConv(object):
         
         return
     
-    def updateLayerParams(self,learningRate,Dcache):
-        # bogus function for layer consistency from the neural net class point of view
-        return
-    
     def makeReady(self,previousLayer=None,nextLayer=None):
         self.previousLayer = previousLayer
         self.sizeIn = self.previousLayer.sizeOut
@@ -662,6 +667,9 @@ class ConvToFC(object):
         
         self.sizeIn = None
         self.sizeOut = [n]
+        
+        # set up optimization configs
+        self.has_optimizable_params = False
         
     def __str__(self):
         '''Returns a string with bio of layer.'''
@@ -697,10 +705,6 @@ class ConvToFC(object):
         DA_p = DZ_c
         self.previousLayer.getDZ_c(DA_p)
         
-        return
-    
-    def updateLayerParams(self,learningRate,Dcache):
-        # bogus function for layer consistency from the neural net class point of view
         return
     
     def makeReady(self,previousLayer=None,nextLayer=None):
@@ -1073,10 +1077,10 @@ class FFNetwork(object):
         
         for i,layer in enumerate(reversed(self.layers)):
             # propagate loss function gradient backwards through network
-            layerDCache = layer.backwardProp()
+            layerDcache = layer.backwardProp()
             if layer.has_optimizable_params:
                 # where sensible, update parameters
-                layer.updateLayerParams(layerDCache)
+                layer.updateLayerParams(layerDcache)
             
     def predict(self,X):
         '''If model is trained, performs forward prop and returns the prediction array.'''
