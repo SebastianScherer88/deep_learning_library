@@ -66,39 +66,8 @@ def softmaxLoss(P,Y):
 
 def sigmoidLoss(P,Y):
     return -np.mean(np.sum(np.multiply(Y,np.log(P)) + np.multiply((1 - Y),np.log(1 - P)),axis=1))
-
+    
 class SGD(object):
-    '''Class representing the generic stochastic gradient descent algorithm'''
-    
-    def __init__(self,eta,gamma,epsilon,lamda,batchSize):
-        '''eta: learning rate
-        lamda: regularization parameter'''
-        
-        # store relevant optimization hyper-parameters
-        self.eta = eta
-        self.lamda = lamda
-        self.batchSize = batchSize
-        
-    def get_parameter_updates(self,Dcache):
-        '''Takes a gradient cache in dictionary form and computes and stores
-        layer parameters updates.'''
-        DeltaWeight = - self.eta * Dcache['DWeight'] - self.lamda * Dcache['Weight'] / self.batchSize
-        DeltaBias = - self.eta * Dcache['Dbias']
-        
-        return DeltaWeight, DeltaBias
-    
-    def __str__(self):
-        '''Returns a string with bio of SGD optimizer.'''
-
-        bio = '\t \t Optimization parameters--------------------------------' \
-                + '\n Learning rate:' + str(self.eta) \
-                + '\n Regularization parameter used:' + str(self.lamda) \
-                + '\n Batch size used: ' + str(self.batchSize) \
-                + '\n Type of optimization used: SGD'
-            
-        return bio
-    
-class SGDMomentum(object):
     '''Class representing the stochastic gradient descent with momentum algorithm'''
     
     def __init__(self,eta,gamma,epsilon,lamda,batchSize):
@@ -1104,7 +1073,7 @@ class FFNetwork(object):
         
         # get optimizer creator, i.e. 'prep optimizer cloning machine'
         if optimizer == 'sgd':
-            optimizer_class = SGDMomentum
+            optimizer_class = SGD
             
         # attach one optimizer to network for later reference
         self.most_recent_optimizer_used = optimizer_class(eta,gamma,epsilon,lamda,batchSize)
