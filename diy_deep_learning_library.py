@@ -1187,23 +1187,24 @@ class GA(object):
         # start evolution process
         for gen_i in range(max_gens):
             # get previous generation of gene configurations
-            n_current_gen, previous_gen = self._get_previous_gen(n_pop)
+            n_current_gen, previous_gen_w_results = self._get_previous_gen(n_pop)
             
             # produce this generation as offsprings of previous generation + mutation
-            current_gen = self._get_current_gent(previous_gen)
+            current_gen_wo_results = self._get_current_gen(previous_gen_w_results)
             
             # evaluate current gen and store in population history
-            current_gen_results = self._eval_gen(n_current_gen,
-                                                 current_gen)
+            current_gen_w_results = self._eval_gen(n_current_gen,
+                                                 current_gen_wo_results)
             
             # check min_cost break criterium if appropriate
             if min_cost != None:
                 # if current generation is evolved enough, stop evolution
-                if self._is_current_gen_smart(current_gen_results,
-                                                 min_cost):
+                if self._is_current_gen_smart(current_gen_w_results,
+                                                 min_cost,
+                                                 crit='best'):
                     break
                 
-        return current_gen
+        return current_gen_w_results
             
     def _get_previous_gen(self,
                           n_pop):
@@ -1236,8 +1237,11 @@ class GA(object):
         return n_previous_gen + 1, previous_gen
     
     def _get_current_gen(self,
+                         previous_gen_w_results,
                          mutation_rate):
         ''' Util function that obtains the current geneation from the previous generation by
             - producing offsprings using crossover based on scores of previous generation
             - mutation by introducing random deviations to offspring genes.'''
             
+        
+        pass
