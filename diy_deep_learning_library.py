@@ -1178,21 +1178,25 @@ class GA(object):
                max_gens = 200,
                n_pop = 50,
                mutation_rate = 0.2,
-               min_cost = None):
+               min_cost = None,
+               elitism = True):
         '''Launches genetic algorithm. Optional break criteria are:
             - max_gens: the maximum number of generations to complete before stopping.
             - n_pop: the population size of a generation
             - mutation_rate: the mutation rate, i.e. probability of introducing random changes into genes
-            - min_cost: if cost of generation's top n genes falls below this value, stop evolution.'''
+            - min_cost: if cost of generation's top n genes falls below this value, stop evolution.
+            - elitism: preserves the top 2 genes in each generation.'''
         
         # start evolution process
         for gen_i in range(max_gens):
             # get previous generation of gene configurations
-            n_current_gen, previous_gen_w_results = self._get_previous_gen(n_pop)
-            
+            previous_gen_w_results = self._get_previous_gen(n_pop)
+                        
             # produce this generation as offsprings of previous generation + mutation
-            current_gen_wo_results = self._get_current_gen(previous_gen_w_results)
-            
+            current_gen_wo_results = self._get_current_gen(previous_gen_w_results,
+                                                           elitism,
+                                                           mutation_rate)
+                        
             # evaluate current gen and store in population history
             current_gen_w_results = self._eval_gen(cost_function,
                                                    current_gen_wo_results)
@@ -1200,10 +1204,11 @@ class GA(object):
             # check min_cost break criterium if appropriate
             if min_cost != None:
                 # if current generation is evolved enough, stop evolution
-                if self._is_current_gen_smart(current_gen_w_results,
-                                                 min_cost,
-                                                 crit='best'):
-                    break
+                #if self._is_current_gen_smart(current_gen_w_results,
+                #                                 min_cost,
+                #                                 crit='best'):
+                #    break
+                pass
                 
         return current_gen_w_results
             
@@ -1221,7 +1226,7 @@ class GA(object):
         dna_cols = ['gene'+str(i+1) for i in range(self.dna_seq_len)]
         
         # if this is the first evolution run, create initial population via intializer
-        if pop_hist == None:
+        if str(type(pop_hist)) != "<class 'pandas.core.frame.DataFrame'>":
             # initialize population history
             self.population_history = pd.DataFrame(columns = ['n_gen'] + dna_cols + ['score'])
             # previous gen index
@@ -1233,20 +1238,24 @@ class GA(object):
                                         columns = dna_cols)
             # attach bogus score to ensure first gen is random even though its the product of natural selection
             previous_gen['score'] = 1
+            # set first generations index to 0, bc the current generation will up it by 1
+            previous_gen['n_gen'] = 0
         # if not, obtain last population from history data frame
         else:
-            n_previous_gen = int(max(pop_hist['n_generation']))
-            previous_gen = pop_hist.loc[pop_hist['n_gen' == n_previous_gen]][dna_cols + ['score']]
-        return n_previous_gen + 1, previous_gen
+            n_previous_gen = int(max(pop_hist['n_gen']))
+            previous_gen = pop_hist.loc[pop_hist['n_gen'] == n_previous_gen][['n_gen'] + dna_cols + ['score']]
+            
+        return previous_gen
     
     def _get_current_gen(self,
                          previous_gen_w_results,
+                         elitism,
                          mutation_rate):
         ''' Util function that obtains the current geneation from the previous generation by
             - producing offsprings using crossover based on scores of previous generation
             - mutation by introducing random deviations to offspring genes.'''
             
-        # get probability distribution from scores
+        # get probability distribution from scores        
         p_genes = np.exp(previous_gen_w_results['score'].values) / np.sum(np.exp(previous_gen_w_results['score'].values))
         
         # get population size
@@ -1257,18 +1266,24 @@ class GA(object):
         
         #   column list shortcut
         dna_cols = ['gene'+str(i+1) for i in range(self.dna_seq_len)]
+        
+        # preserve 2 best genes if elitism is selected
+        if elitism:
+            sorted_previous_gen = previous_gen_w_results.sort_values('score',ascending=False)
+            offspring_list.append(sorted_previous_gen[dna_cols].values[0])
+            offspring_list.append(sorted_previous_gen[dna_cols].values[1])
                 
         # iterate over parent pairs to produce 2 offsprings per 2 parents
-        for i_couple in range(np.ceil(n_pop / 2)):
+        for i_couple in range(int(np.ceil(n_pop / 2))):
             # randomly sample to indices from previous population according to
             # distribution induced by its score
-            i_father, i_mother = np.random.choice(range(self.dna_seq_len),
+            i_father, i_mother = np.random.choice(range(n_pop),
                                                   2,
                                                   replace=False,
                                                   p = p_genes)
             # get father and mother
-            father, mother = (previous_gen_w_results[:,dna_cols].values[i_father],
-                              previous_gen_w_results[:,dna_cols].values[i_mother])
+            father, mother = (previous_gen_w_results[dna_cols].values[i_father],
+                              previous_gen_w_results[dna_cols].values[i_mother])
             
             # get two offsprings
             son, daughter = self._crossover(father,mother)
@@ -1285,10 +1300,9 @@ class GA(object):
         # create empty data frame
         offspring_gen = pd.DataFrame(offspring_list,
                                      columns = dna_cols)            
-        # current generation index
-        n_gen_current = previous_gen_w_results['n_gen'][0]
-        offspring_gen['n_gen'] = n_gen_current
-        # empty score column
+        # set current generation index
+        offspring_gen['n_gen'] = previous_gen_w_results['n_gen'][0] + 1
+        # set empty score column
         offspring_gen['score'] = 0
         
         return offspring_gen
@@ -1344,7 +1358,7 @@ class GA(object):
             # iterate over dna strains within one gene, i.e. scaler values
             for i_strain in range(self.dna_seq_len):
                 # to mutate or not to mutate
-                lets_mutate = np.random.choice([True, False],p=mutation_rate)
+                lets_mutate = np.random.choice([True, False],p=[mutation_rate,1 - mutation_rate])
                 if lets_mutate:
                     # get rough specs of dna distribution to ensure mutation is not "malign"
                     gene_mean, gene_std = np.mean(gene), np.std(gene)
@@ -1366,12 +1380,15 @@ class GA(object):
         x = current_gen[dna_cols].values
         
         # assess genes via cost function
-        scores = list(map(cost_function,x))
+        scores = [cost_function(x_i.reshape((-1,self.dna_seq_len))) for x_i in x]
         
-        # attach gene scores to current generation frame and save
-        current_gen['scores'] = scores
-        self.population_history = pd.concat(self.population_history,
-                                            current_gen)
+        # --- scores
+        #   attach gene scores
+        current_gen['score'] = scores
+        #   rank by scores
+        current_gen = current_gen.sort_values(by = 'score')
+        #   attach to history
+        self.population_history = pd.concat([self.population_history,current_gen])
         
         return current_gen
         
