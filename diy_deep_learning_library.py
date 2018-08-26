@@ -18,12 +18,16 @@
 #
 # Network class
 # [9] define feed forward network class
+#
+# Genetic Algorithms
+# [10] define a generic genetic algorithm
 
 #----------------------------------------------------
 # [0] Make some basic imports
 #----------------------------------------------------
 
 import numpy as np
+import pandas as pd
 
 #----------------------------------------------------
 # [1] Define some computational util functions
@@ -1136,3 +1140,104 @@ class FFNetwork(object):
         P = self.forwardProp(X)
         
         return np.argmax(P,axis=1).reshape(-1,1)
+    
+#----------------------------------------------------
+# [10] define genetic algorithm
+#----------------------------------------------------
+        
+class GA(object):
+    '''Class representing a continuouss genetic algorithm '''
+    
+    def __init__(self,
+                 dna_seq_len,
+                 gene_type = 'continuous',
+                 initializer = None):
+        
+        # store DNA sequence length
+        self.dna_seq_len = dna_seq_len
+        
+        # initialize cost function
+        self.cost_function = None
+        
+        # initialize gene history storage data frame
+        self.population_history = None
+        
+        # store type
+        self.gene_type = gene_type
+        
+        # method to initialize first generation of genes
+        # needs to be of the form initializer(n_pop) and return an array of shape
+        # (n_pop, dna_seq_len)
+        if initializer:
+            self.initializer = initializer
+        else:
+            self.initializer = lambda n_pop: np.random.rand(n_pop,self.dna_seq_len)
+            
+    def evolve(self,
+               max_gens = 200,
+               n_pop = 50,
+               mutation_rate = 0.2,
+               min_cost = None):
+        '''Launches genetic algorithm. Optional break criteria are:
+            - max_gens: the maximum number of generations to complete before stopping.
+            - n_pop: the population size of a generation
+            - mutation_rate: the mutation rate, i.e. probability of introducing random changes into genes
+            - min_cost: if cost of generation's top n genes falls below this value, stop evolution.'''
+        
+        # start evolution process
+        for gen_i in range(max_gens):
+            # get previous generation of gene configurations
+            n_current_gen, previous_gen = self._get_previous_gen(n_pop)
+            
+            # produce this generation as offsprings of previous generation + mutation
+            current_gen = self._get_current_gent(previous_gen)
+            
+            # evaluate current gen and store in population history
+            current_gen_results = self._eval_gen(n_current_gen,
+                                                 current_gen)
+            
+            # check min_cost break criterium if appropriate
+            if min_cost != None:
+                # if current generation is evolved enough, stop evolution
+                if self._is_current_gen_smart(current_gen_results,
+                                                 min_cost):
+                    break
+                
+        return current_gen
+            
+    def _get_previous_gen(self,
+                          n_pop):
+        '''Util function that obtains a generation from which the first generation of the evolution process
+        will be generated. Either uses initialization or reads from population history.
+        
+        Returns a data frame shape (n_pop,dna_seq_length + 1) ,where the last column lists the scores of the genes.'''
+        
+        # population history shortcut
+        pop_hist = self.population_history
+        
+        # column list shortcut
+        dna_cols = ['gene'+str(i+1) for i in range(self.dna_seq_len)]
+        
+        # if this is the first evolution run, create initial population via intializer
+        if pop_hist == None:
+            # previous gen index
+            n_previous_gen = -1
+            # previous gen dna
+            previous_gen_dna = self.initializer(n_pop)
+            # arrange in frame
+            previous_gen = pd.DataFrame(previous_gen_dna,
+                                        columns = dna_cols)
+            # attach bogus score to ensure first gen is random even though its the product of natural selection
+            previous_gen['score'] = 1
+        # if not, obtain last population from history data frame
+        else:
+            n_previous_gen = int(max(pop_hist['n_generation']))
+            previous_gen = pop_hist.loc[pop_hist['n_gen' == n_previous_gen]][dna_cols + ['score']]
+        return n_previous_gen + 1, previous_gen
+    
+    def _get_current_gen(self,
+                         mutation_rate):
+        ''' Util function that obtains the current geneation from the previous generation by
+            - producing offsprings using crossover based on scores of previous generation
+            - mutation by introducing random deviations to offspring genes.'''
+            
