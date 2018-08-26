@@ -18,6 +18,9 @@
 #
 # Network class
 # [9] define feed forward network class
+#
+# Genetic Algorithms
+# [10] define a generic genetic algorithm
 
 #----------------------------------------------------
 # [0] Make some basic imports
@@ -1136,3 +1139,36 @@ class FFNetwork(object):
         P = self.forwardProp(X)
         
         return np.argmax(P,axis=1).reshape(-1,1)
+    
+#----------------------------------------------------
+# [10] define genetic algorithm
+#----------------------------------------------------
+        
+class GA(object):
+    '''Class representing a continuouss genetic algorithm '''
+    
+    def __init__(self,
+                 dna_seq_len,
+                 gene_type = 'continuous',
+                 initializer = None):
+        
+        # store DNA sequence length
+        self.dna_seq_len = dna_seq_len
+        
+        # initialize cost function
+        self.cost_function = None
+        
+        # initialize gene history storage
+        self.population_history = None
+        
+        # store type
+        self.gene_type = gene_type
+        
+        # method to initialize first generation of genes
+        # needs to be of the form initializer(n_pop,len_dna)
+        if initializer:
+            self.initializer = initializer
+        else:
+            self.initializer = np.random()
+            
+        
