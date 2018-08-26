@@ -1174,6 +1174,7 @@ class GA(object):
             self.initializer = lambda n_pop: np.random.rand(n_pop,self.dna_seq_len)
             
     def evolve(self,
+               cost_function,
                max_gens = 200,
                n_pop = 50,
                mutation_rate = 0.2,
@@ -1193,8 +1194,8 @@ class GA(object):
             current_gen_wo_results = self._get_current_gen(previous_gen_w_results)
             
             # evaluate current gen and store in population history
-            current_gen_w_results = self._eval_gen(n_current_gen,
-                                                 current_gen_wo_results)
+            current_gen_w_results = self._eval_gen(cost_function,
+                                                   current_gen_wo_results)
             
             # check min_cost break criterium if appropriate
             if min_cost != None:
@@ -1221,6 +1222,8 @@ class GA(object):
         
         # if this is the first evolution run, create initial population via intializer
         if pop_hist == None:
+            # initialize population history
+            self.population_history = pd.DataFrame(columns = ['n_gen'] + dna_cols + ['score'])
             # previous gen index
             n_previous_gen = -1
             # previous gen dna
@@ -1243,5 +1246,133 @@ class GA(object):
             - producing offsprings using crossover based on scores of previous generation
             - mutation by introducing random deviations to offspring genes.'''
             
+        # get probability distribution from scores
+        p_genes = np.exp(previous_gen_w_results['score'].values) / np.sum(np.exp(previous_gen_w_results['score'].values))
         
-        pass
+        # get population size
+        n_pop = previous_gen_w_results.shape[0]
+        
+        # initialize storage list for offsprings
+        offspring_list = []
+        
+        #   column list shortcut
+        dna_cols = ['gene'+str(i+1) for i in range(self.dna_seq_len)]
+                
+        # iterate over parent pairs to produce 2 offsprings per 2 parents
+        for i_couple in range(np.ceil(n_pop / 2)):
+            # randomly sample to indices from previous population according to
+            # distribution induced by its score
+            i_father, i_mother = np.random.choice(range(self.dna_seq_len),
+                                                  2,
+                                                  replace=False,
+                                                  p = p_genes)
+            # get father and mother
+            father, mother = (previous_gen_w_results[:,dna_cols].values[i_father],
+                              previous_gen_w_results[:,dna_cols].values[i_mother])
+            
+            # get two offsprings
+            son, daughter = self._crossover(father,mother)
+            
+            # mutate offsprings
+            x_son, x_daughter = self._mutate([son, daughter], mutation_rate)
+            
+            # add to offspring generation
+            offspring_list += [x_son, x_daughter]
+        
+        # --- create offspring generation data frame
+        #    cut off potential excess offspring if n_pop // 2 != 0
+        offspring_list = offspring_list[:n_pop]
+        # create empty data frame
+        offspring_gen = pd.DataFrame(offspring_list,
+                                     columns = dna_cols)            
+        # current generation index
+        n_gen_current = previous_gen_w_results['n_gen'][0]
+        offspring_gen['n_gen'] = n_gen_current
+        # empty score column
+        offspring_gen['score'] = 0
+        
+        return offspring_gen
+    
+    def _crossover(self,
+                   father,
+                   mother):
+        '''Util function that applies crossover to two parent genes to produce
+        two offpsring genes. This is effectively calculating both versions of 
+        the same convex combination of the parent genes, taken after some randomly
+        smapled cut-off index.
+        
+        Takes two one dimensional arrays and returns two one dimensional arrays
+        of the same length.'''
+        
+        # verify dimensions
+        assert(len(father) == len(mother) == self.dna_seq_len)
+        
+        # --- get crossover specifications
+        #   coefficients
+        beta = np.random.uniform()
+        cut_off = np.random.choice(self.dna_seq_len)
+        
+        # part of offpsrings that are inherited from single parent
+        son_like_dad, daughter_like_mum = father[cut_off:], mother[cut_off:]
+        
+        # part of offsprings that are inherited from both parents
+        son_like_parents = beta * father[:cut_off] + (1 - beta) * mother[:cut_off]
+        daughter_like_parents = beta * mother[:cut_off] + (1 - beta) * father[:cut_off]
+        
+        # assemble offspring from parts
+        son = np.concatenate([son_like_dad,son_like_parents])
+        daughter = np.concatenate([daughter_like_mum,daughter_like_parents])
+        
+        # verify dimensions
+        assert(len(son) == len(daughter) == self.dna_seq_len)
+        
+        return son, daughter
+    
+    def _mutate(self,
+                genes,
+                mutation_rate):
+        '''Util function that applies mutation. Effectively just introduces random
+        values into gene according to specified binomial probability.
+        
+        Takes a list of numpy arrays and returns a list of numpy arrays of the
+        same length (list) and dimensions (arrays in list).'''
+        
+        x_genes = []
+        
+        # iterate over all genes to be mutated
+        for gene in genes:
+            # iterate over dna strains within one gene, i.e. scaler values
+            for i_strain in range(self.dna_seq_len):
+                # to mutate or not to mutate
+                lets_mutate = np.random.choice([True, False],p=mutation_rate)
+                if lets_mutate:
+                    # get rough specs of dna distribution to ensure mutation is not "malign"
+                    gene_mean, gene_std = np.mean(gene), np.std(gene)
+                    # mutate the current dna strain of current gene
+                    gene[i_strain] = np.random.normal(loc=gene_mean,scale=gene_std)
+                    
+            x_genes.append(gene)
+            
+        return x_genes
+    
+    def _eval_gen(self,
+                  cost_function,
+                  current_gen):
+        '''Util function that applies the cost function to each element of the 
+        current population and stores the results in the population's data frame.'''
+        
+        # select gene data, i.e. the inputs to the cost function
+        dna_cols = ['gene' + str(i+1) for i in range(self.dna_seq_len)]
+        x = current_gen[dna_cols].values
+        
+        # assess genes via cost function
+        scores = list(map(cost_function,x))
+        
+        # attach gene scores to current generation frame and save
+        current_gen['scores'] = scores
+        self.population_history = pd.concat(self.population_history,
+                                            current_gen)
+        
+        return current_gen
+        
+        
