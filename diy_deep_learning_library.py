@@ -21,6 +21,7 @@
 #
 # Genetic Algorithms
 # [10] define a generic genetic algorithm
+# [11] define gene <-> network weight translator
 
 #----------------------------------------------------
 # [0] Make some basic imports
@@ -28,6 +29,7 @@
 
 import numpy as np
 import pandas as pd
+from functools import partial
 
 #----------------------------------------------------
 # [1] Define some computational util functions
@@ -1392,4 +1394,133 @@ class GA(object):
         
         return current_gen
         
+#----------------------------------------------------
+# [11] define gene <-> network weight translator
+#----------------------------------------------------
+
+class GeneWeightTranslator(object):
+    '''Object class handling the gene <-> weight conversion
+    based on a neural network's individual parametrized layer. It stores the layer's weight's shapes
+    and can be used both for initialization of the first generation of genes as well as 
+    for later gene <-> network_weight conversion in the cost function.'''
+    
+    def __init__(self,
+                 ffnetwork):
+        # make sure network has been fixed already
+        assert(ffnetwork.finalState)
         
+        # --- attach network and network specific properties/objects
+        #   network
+        self.ffnetwork = ffnetwork
+        #   layers with optimizable parameters
+        self.weighted_layers = [weighted_layer for weighted_layer in ffnetwork.layers if weighted_layer.has_optimizable_params]
+        #   shapes of optimizable parameters
+        self.layer_weight_shapes = [(weighted_layer.Weight.shape,
+                                     weighted_layer.bias.shape) for weighted_layer in (self.weighted_layers)]
+        #   parameter counts of optimizable weights & biases
+        self.layer_weight_sizes = [(np.prod(shape_w),
+                                    np.prod(shape_b)) for (shape_w,shape_b) in self.layer_weight_shapes]
+    
+        #   dna sequence length = number of all optimizable parameters in network
+        self.dna_seq_len = np.sum(self.layer_weight_sizes)
+        
+        # --- build gene initializer off of weighted layer's weight initializer methods
+        #self.gene_initializer = self._get_gene_initializer()
+        
+    def get_current_weights(self):
+        '''Util function that retrieves the current values of all optimizable parameters of the associated ffnetwork.
+        Returns a list of tuples (Weight,bias).'''
+        
+        return [(weighted_layer.Weight,weighted_layer.bias) for weighted_layer in self.weighted_layers]
+    
+    def set_current_weights(self, weights):
+        '''Util function that sets the associated ffnetwork's weights to the values specified in the 'weights'
+        argument. Must be a list of (weight,bias) tuples of the correct shape.'''
+        
+        # --- check dimensions
+        #   number of weighted layers
+        assert(len(weights) == len(self.weighted_layers))
+        #   dimensions of parameters specified
+        for i,(weight, bias) in enumerate(weights):
+            assert(weight.shape == self.layer_weight_shapes[i][0]) # weight shapes
+            assert(bias.shape == self.layer_weight_shapes[i][1]) # bias shapes
+            
+        # -- set the network weights to specified values
+        for weighted_layer, weight in zip(self.weighted_layers,weights):
+            weighted_layer.Weight = weight[0] # weights are first tuple element
+            weighted_layer.bias = weight[1] # bias are second tuple elements
+        
+    def gene_to_weights(self,
+                        gene):
+        '''Util function that converts a gene to a list of (Weight,bias) tuples,
+        aligned with the GeneWeightTranslator's 'weighted_layers' attribute.'''
+        
+        # --- iterate over gene = [flat_weight_1:flat_bias_1:...:flat_weight_n,flat_bias_n],
+        # --- cut off chunks and reshape
+        converted_weights = []
+        #   cut off chunks and reshape into weights and biases
+        for (size_w, size_b),(shape_w,shape_b) in zip(self.layer_weight_sizes,self.layer_weight_shapes):
+            # get chunk needed for current layer's parameters
+            current_layer_chunk = gene[:size_w + size_b]
+            # recreate weight
+            weight = current_layer_chunk[:size_w].reshape(shape_w)
+            bias = current_layer_chunk[size_w:].reshape(shape_b)
+            
+            # add reshaped layer parameters to storage list
+            converted_weights.append((weight,bias))
+            
+            # update gene, i.e. drop used chunk
+            gene = gene[size_w + size_b:]
+            
+        return converted_weights
+        
+    def weights_to_gene(self,
+                         weights):
+        '''Util function that converts a list of (Weight,bias) tuples (aligned with
+        the GeneWeightTranslator's 'weighted_layers' attribute) to a one dimensional
+        numpy array, i.e. gene.'''
+        
+        # --- build one long gene from all (weight,bias) tuples
+        #   initialize empty gene
+        gene_segments = []
+        for W,b in weights:
+            W_flat, b_flat = W.reshape(1,-1), b.reshape(1,-1)
+            gene_segments.append(W_flat)
+            gene_segments.append(b_flat)
+            
+        gene = np.concatenate(gene_segments,axis=1)
+        
+        return gene
+
+    #def _get_gene_initializer(self):
+    #    '''Util function that constructs and returns a gene initializer as described
+    #    in the GA docs, i.e.
+    #        - taking an argument 'n_pop' of type integer
+    #        - returning a batch of genes as a (n_pop,dna_seq_len) numpy array.'''
+    #        
+    #    return lambda n_pop : partial(self._generic_gene_initializer,self)(n_pop)
+    
+    def initialize_genes(self,
+                         n_pop):
+        '''Util function that returns a batch of randomly initialized genes
+        in the form of a numpy array of shape (n_pop,self.dna_seq_len).'''
+        
+        # --- create all n_pop genes indidvidually via assocdiated networks initiliazers
+        init_genes_list = []
+        
+        for i_pop in range(n_pop):
+            # randomly initialize all ffnetwork's weighted layers weights
+            [weighted_layer.initializeWeightBias() for weighted_layer in self.weighted_layers]
+            # grab initialized weights from associated ffnetwork
+            init_weights = self.get_current_weights()
+            # convert weights to gene
+            init_gene = self.weights_to_gene(init_weights)
+            # append gene to storage list
+            init_genes_list.append(init_gene)
+            
+        init_genes = np.array(init_genes_list).reshape((n_pop,self.dna_seq_len))
+        
+        # final shape check
+        assert(init_genes.shape == (n_pop, self.dna_seq_len))
+        
+        return init_genes
