@@ -1384,7 +1384,7 @@ class GA(object):
         
         # assess genes via cost function
         scores = []
-        n_pop = x.shape[1]
+        n_pop = x.shape[0]
         for i,x_i in enumerate(x):
             print("Evaluating gene " + str(i) + " / " + str(n_pop) + " | Generation " + str(n_gen))
             score_i = cost_function(x_i.reshape((-1,self.dna_seq_len)))
@@ -1397,6 +1397,8 @@ class GA(object):
         current_gen = current_gen.sort_values(by = 'score')
         #   attach to history
         self.population_history = pd.concat([self.population_history,current_gen])
+        #   top of the crop
+        print("Maximal score of " + str(max(scores)) + " achieved by gene " + str(np.argmax(scores)) + " | Generation " + str(n_gen))
         
         return current_gen
         
@@ -1500,13 +1502,6 @@ class GeneWeightTranslator(object):
         
         return gene[0]
 
-    #def _get_gene_initializer(self):
-    #    '''Util function that constructs and returns a gene initializer as described
-    #    in the GA docs, i.e.
-    #        - taking an argument 'n_pop' of type integer
-    #        - returning a batch of genes as a (n_pop,dna_seq_len) numpy array.'''
-    #        
-    #    return lambda n_pop : partial(self._generic_gene_initializer,self)(n_pop)
     
     def initialize_genes(self,
                          n_pop):
