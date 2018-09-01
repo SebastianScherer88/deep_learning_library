@@ -72,6 +72,9 @@ def softmaxLoss(P,Y):
 
 def sigmoidLoss(P,Y):
     return -np.mean(np.sum(np.multiply(Y,np.log(P)) + np.multiply((1 - Y),np.log(1 - P)),axis=1))
+
+def l2Loss(P,Y):
+    return 0.5 * (np.linalg.norm(P - Y,ord=2) ** 2) / P.shape[0]
     
 class SGD(object):
     '''Class representing the stochastic gradient descent with momentum algorithm'''
