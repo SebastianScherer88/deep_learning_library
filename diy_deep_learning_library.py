@@ -75,6 +75,22 @@ def sigmoidLoss(P,Y):
 
 def l2Loss(P,Y):
     return 0.5 * (np.linalg.norm(P - Y,ord=2) ** 2) / P.shape[0]
+
+def getBatches(self,X,Y,batchSize):
+    '''Sample randomly from X and Y, then yield batches.'''
+    nData = X.shape[0]
+    shuffledIndices = np.arange(nData)
+    np.random.shuffle(shuffledIndices)
+    
+    XShuffled, YShuffled = X[shuffledIndices], Y[shuffledIndices]
+    
+    nBatches = int(X.shape[0] / batchSize)
+    
+    for iBatch in range(nBatches):
+        XBatch, YBatch = (XShuffled[iBatch*batchSize:(iBatch+1)*batchSize],
+                          YShuffled[iBatch*batchSize:(iBatch+1)*batchSize])
+    
+        yield XBatch, YBatch, nBatches
     
 class SGD(object):
     '''Class representing the stochastic gradient descent with momentum algorithm'''
@@ -1047,7 +1063,7 @@ class FFNetwork(object):
         
         # execute training
         for epoch in range(nEpochs):
-            for i,(XBatch,YBatch,nBatches) in enumerate(self.getBatches(X,Y,batchSize)):
+            for i,(XBatch,YBatch,nBatches) in enumerate(getBatches(X,Y,batchSize)):
                 P = self.forwardProp(XBatch)
                 batchLoss = self.loss(P,YBatch)
                 recentLoss += batchLoss
@@ -1109,22 +1125,6 @@ class FFNetwork(object):
             # check if layer has optimizable parameters
             if layer.has_optimizable_params:
                 layer.optimizer = optimizer_class(eta,gamma,epsilon,lamda,batchSize)
-    
-    def getBatches(self,X,Y,batchSize):
-        '''Sample randomly from X and Y, then yield batches.'''
-        nData = X.shape[0]
-        shuffledIndices = np.arange(nData)
-        np.random.shuffle(shuffledIndices)
-        
-        XShuffled, YShuffled = X[shuffledIndices], Y[shuffledIndices]
-        
-        nBatches = int(X.shape[0] / batchSize)
-        
-        for iBatch in range(nBatches):
-            XBatch, YBatch = (XShuffled[iBatch*batchSize:(iBatch+1)*batchSize],
-                              YShuffled[iBatch*batchSize:(iBatch+1)*batchSize])
-        
-            yield XBatch, YBatch, nBatches
         
     def forwardProp(self,XBatch):
         '''Executes one forward propagation through the network. Returns the loss averaged over the batch.'''
@@ -1610,10 +1610,6 @@ class GLM(object):
     def __init__(self,
                  family):
         
-        # sanity check range of family argument - true sanity check can only be done
-        # once the response type has been passed to the model for training
-        
-        
         # --- intialize some basic attributes
         # type of distribution assumed to be generating the response values
         self.family = family
@@ -1656,3 +1652,40 @@ class GLM(object):
             
         return inverse_link
         
+    def forwardProp(self,
+                     X,
+                     apply_inverse_link=False):
+        '''Helper function that applies the model parameters to the specified inputs and applies the link
+        function (if desired; during training, the linear predictor is picked up by the backprop method as is)'''
+        
+        # ensure that weights have been initialized for this model instance
+        assert self.Weight != None and self.bias != None
+        
+        # calculate linear predictor eta
+        Eta = np.dot(X,self.Weight) + self.bias
+                    
+        if apply_inverse_link:
+            P = self.inverse_link(Eta)
+        elif (not apply_inverse_link):
+            P = Eta
+            
+        return P
+    
+    def backwardProp(self,
+                     X,
+                     Y):
+        '''Helper function that calculates the gradient of the model's optimizable parameters self.Weights and self.bias
+        and returns them in the common format Dcache.'''
+        
+        # calculate linear predictor eta and apply inverse link function in one step
+        P = self.forwardProp(X,
+                             apply_inverse_link=True)
+        
+        # calculate gradients for weights and bias
+        DWeight = np.multiply(X,Y - P)
+        Dbias = Y - P
+        
+        DCache = {'DWeight':DWeight,
+                  'Dbias':Dbias}
+        
+        return DCache
