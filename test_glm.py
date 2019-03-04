@@ -21,15 +21,15 @@ np.random.seed(seed = 10)
 n = 10000
 
 # generate some predictors
-predictor_means = np.array([7,3,-0.6,15,0.2]).reshape(1,-1)
-predictor_sds = np.array([0.21,0.1,0.3,4,0.8]).reshape(1,-1)
+predictor_means = np.array([-7,3,-0.6,1.5,0.2]).reshape(1,-1)
+predictor_sds = np.array([2,0.1,0.3,4,0.8]).reshape(1,-1)
 
 # sample predictors from standard normal and then adjust & stretch to create
 # different profiles
 X = np.random.randn(n,5) * predictor_sds + predictor_means
                    
 # set true linear coefficients
-beta_true = np.array([4.2,-2,3,-0.7,5.8]).reshape(1,-1)
+beta_true = np.array([4.2,-2,3,-0.7,0.58]).reshape(1,-1)
 intercept_true = jitter_mean = 8
 
 # prep some random noise from uniform [0,1] * skew + mean
@@ -38,7 +38,7 @@ noise = np.random.rand(n,1) * noise_stretch
                                
 # create response as actual samples from constructed poissons, using the specs
 # set so far
-Y_means = np.dot(X,beta_true.T) + intercept_true + noise
+Y_means = np.exp(np.dot(X,beta_true.T) + intercept_true) + noise
 Y = np.random.poisson(lam=Y_means)
 
 assert(X.shape[0] == Y.shape[0])
