@@ -1592,3 +1592,21 @@ class PG(object):
                 self.ffnetwork.backwardProp(Y_ep,reinforcement_coeff=r_ep)
                 
         return self.ffnetwork
+    
+#----------------------------------------------------
+# [13] define GLM class for one-dimensional regression/classification
+#----------------------------------------------------
+
+class GLM(object):
+    
+    def __init__(self,
+                 family):
+        
+        # sanity check range of family argument - true sanity check can only be done
+        # once the response type has been passed to the model for training
+        assert(family in "poisson","normal","binomial","gamma")
+        
+        # --- intialize some basic attributes
+        # type of distribution assumed to be generating the response values
+        self.family = family
+        
