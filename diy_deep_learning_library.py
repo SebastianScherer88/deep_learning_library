@@ -95,14 +95,17 @@ class SGD(object):
         self.DeltaWeightPrevious = 0
         self.DeltaBiasPrevious = 0
         
-    def get_parameter_updates(self,Dcache):
+    def get_parameter_updates(self,
+                              current_weight,
+                              current_bias,
+                              Dcache):
         '''Takes a gradient cache in dictionary form and computes and stores
         layer parameters updates. Stores the current updates for next iteration.'''
         
         # get weight update
         DeltaWeight = - self.eta * Dcache['DWeight'] \
                         - self.gamma * self.DeltaWeightPrevious \
-                        - self.lamda * Dcache['Weight'] / self.batchSize
+                        - self.lamda * current_weight / self.batchSize
         
         # get bias update
         DeltaBias = - self.eta * Dcache['Dbias'] \
@@ -217,14 +220,17 @@ class FcLayer(object):
         # calculate weight gradients
         DWeight = np.dot(A_p.T,DZ_c) / A_p.shape[0]
         Dbias = np.mean(DZ_c,axis=0)
-        Dcache = {'DWeight':DWeight,'Dbias':Dbias, 
-                  'Weight':self.Weight, 'bias':self.bias}
+        Dcache = {'DWeight':DWeight,'Dbias':Dbias}#, 
+                  #'Weight':self.Weight, 'bias':self.bias}
         
         return Dcache
         
     def updateLayerParams(self,Dcache,direction_coeff = 1):
+        
         # retrieve updates for layer's weights and bias using layer's optimizer
-        DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(Dcache)
+        DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(self.Weight,
+                                                                      self.bias,
+                                                                      Dcache)
         
         # update parameters with respective updates obtained from optimizer
         self.Weight += direction_coeff * DeltaWeight
@@ -444,14 +450,16 @@ class ConvLayer(object):
         Dbias = Dbias[np.newaxis,:,np.newaxis,np.newaxis,np.newaxis]
         
         # for this layer, store derivatives and weights in cache for the optimizer
-        Dcache = {'DWeight':DWeight,'Dbias':Dbias, 
-                  'Weight':self.Weight, 'bias':self.bias}
+        Dcache = {'DWeight':DWeight,'Dbias':Dbias}#, 
+                  #'Weight':self.Weight, 'bias':self.bias}
         
         return Dcache
     
     def updateLayerParams(self,Dcache,direction_coeff=1):
         # retrieve updates for layer's weights and bias using layer's optimizer
-        DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(Dcache)
+        DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(self.Weight,
+                                                                      self.bias,
+                                                                      Dcache)
         
         # update parameters with respective updates obtained from optimizer
         self.Weight += direction_coeff * DeltaWeight
@@ -1609,4 +1617,7 @@ class GLM(object):
         # --- intialize some basic attributes
         # type of distribution assumed to be generating the response values
         self.family = family
+        
+        # the parameter cache needed during model parameter optimization, to be accessed by optimizer instace
+        self.cache = {}
         
