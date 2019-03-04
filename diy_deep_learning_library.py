@@ -1612,12 +1612,47 @@ class GLM(object):
         
         # sanity check range of family argument - true sanity check can only be done
         # once the response type has been passed to the model for training
-        assert(family in "poisson","normal","binomial","gamma")
+        
         
         # --- intialize some basic attributes
         # type of distribution assumed to be generating the response values
         self.family = family
         
-        # the parameter cache needed during model parameter optimization, to be accessed by optimizer instace
-        self.cache = {}
+        # canonical link & inverse link functions associated with specified family
+        self.link = self._get_canonical_link(family)
+        self.inverse_link = self._get_inverse_canonical_link(family)
+        
+        # weights (=beta) and bias (=beta_0)
+        self.Weight = None
+        self.bias = None
+        
+    def _get_canonical_link(self,
+                            family):
+        '''Helper function that returns the canonical link function associated with the given distribution type'''
+        
+        assert family in ("poisson","normal","binomial","gamma")
+        
+        if (family in "poisson","gamma"):
+            link = np.log
+        elif family == "normal":
+            link = np.identity
+        elif family == "binomial":
+            link = lambda eta: np.log(eta) - np.log(1 - eta) # logit
+            
+        return link
+    
+    def _get_inverse_canonical_link(self,
+                                    family):
+        '''Helper function that returns the inverse of the canonical link function associated with the given distribution type'''
+        
+        assert family in ("poisson","normal","binomial","gamma")
+        
+        if (family in "poisson","gamma"):
+            inverse_link = np.exp
+        elif family == "normal":
+            inverse_link = np.identity
+        elif family == "binomial":
+            inverse_link = lambda mu: np.exp(mu) / (1 + np.exp(mu)) # inverse logit
+            
+        return inverse_link
         
