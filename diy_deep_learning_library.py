@@ -1617,10 +1617,17 @@ class GLM(object):
         # canonical link & inverse link functions associated with specified family
         self.link = self._get_canonical_link(family)
         self.inverse_link = self._get_inverse_canonical_link(family)
+        self.b = self._get_family_b_c(family)['b']
+        self.c = self._get_family_b_C(family)['c']
         
         # weights (=beta) and bias (=beta_0)
         self.Weight = None
         self.bias = None
+        
+        # optimizer
+        self.optimizer = self.most_recent_optimizer_used = None
+        self.trained = False
+        self.lossHistory = None
         
     def _get_canonical_link(self,
                             family):
@@ -1651,6 +1658,18 @@ class GLM(object):
             inverse_link = lambda mu: np.exp(mu) / (1 + np.exp(mu)) # inverse logit
             
         return inverse_link
+    
+    def _get_family_b_c(self,
+                        family):
+        '''Helper function that returns the b and c term of the specified member of the exponential distribution family.'''
+        
+        assert family in ("poisson")#,"normal","binomial","gamma")
+        
+        if family == "poisson":
+            b = lambda theta: np.exp(theta)
+            c = lambda y, xi: 0
+            
+        return {'b':b,'c':c}
         
     def forwardProp(self,
                      X,
@@ -1673,19 +1692,121 @@ class GLM(object):
     
     def backwardProp(self,
                      X,
+                     Eta,
                      Y):
         '''Helper function that calculates the gradient of the model's optimizable parameters self.Weights and self.bias
         and returns them in the common format Dcache.'''
         
-        # calculate linear predictor eta and apply inverse link function in one step
-        P = self.forwardProp(X,
-                             apply_inverse_link=True)
-        
         # calculate gradients for weights and bias
-        DWeight = np.multiply(X,Y - P)
-        Dbias = Y - P
+        DWeight = np.multiply(X,Y - Eta)
+        Dbias = Y - Eta
         
         DCache = {'DWeight':DWeight,
                   'Dbias':Dbias}
         
         return DCache
+    
+    def initialize_optimizers(self,optimizer,eta,gamma,epsilon,lamda,batchSize):
+        '''Creates and attaches optimizer objects to all network layers carrying optimizable parameters'''
+        
+        # make sure library supports specified optimization type
+        assert optimizer in ['sgd']
+        
+        # get optimizer creator, i.e. 'prep optimizer cloning machine'
+        if optimizer == 'sgd':
+            optimizer_class = SGD
+            
+        # attach one optimizer to network for later reference
+        self.optimizer = self.most_recent_optimizer_used = optimizer_class(eta,gamma,epsilon,lamda,batchSize)
+        
+    def initializeWeightBias(self,
+                             n_predictors):
+        '''Helper function that initializes model's weights and bias term.'''
+        
+        self.Weight = np.random.randn(n_predictors,1) * 1 / (n_predictors + 1)
+        self.bias = np.zeros((1,1))
+        
+    def loss(self,
+             Eta,
+             YBatch):
+        '''Calculcates the loss function, i.e. the mean of the negative log-likelihood.'''
+        
+        # NOTE: this needs to be updated to non-poisson dists - need to add the c term
+        average_logloss = np.mean(self.b(Eta) - np.multiply(YBatch,Eta),axis=1)
+        
+        return average_logloss
+        
+    def updateGLMParams(self,Dcache,direction_coeff = 1):
+        
+        # retrieve updates for GLM's weights and bias using layer's optimizer
+        DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(self.Weight,
+                                                                      self.bias,
+                                                                      Dcache)
+        
+        # update parameters with respective updates obtained from optimizer
+        self.Weight += direction_coeff * DeltaWeight
+        self.bias += direction_coeff * DeltaBias
+        
+    
+    def trainGLM(self,
+                     X,Y,
+                     nEpochs=5,
+                     batchSize=25,
+                     optimizer='sgd',
+                     eta=0.001,
+                     gamma=0.99,
+                     epsilon=0.0000001,
+                     lamda=0,
+                     displaySteps=50):
+        '''Trains the generalized linear model using a specified type of gradient descent.'''
+        
+        # initialize storage for batch losses to be collected during training
+        lossHistory = []
+        recentLoss = 0
+        
+        # create and attach specified optimizers to layers, also keep one for later reference
+        self.initialize_optimizers(optimizer,eta,gamma,epsilon,lamda,batchSize)
+        
+        # initialize weights and bias term
+        self.initializeWeightBias(n_predictors = X.shape[1])
+        
+        # execute training
+        for epoch in range(nEpochs):
+            for i,(XBatch,YBatch,nBatches) in enumerate(getBatches(X,Y,batchSize)):
+                # calculate linear predictor for loss function progress report
+                Eta = self.forwardProp(XBatch,
+                                       apply_inverse_link=False)
+                
+                # calculate this batch's loss function and update
+                batchLoss = self.loss(Eta,YBatch)
+                recentLoss += batchLoss
+                
+                # calculate gradients for model's optimizable parameters
+                DCache = self.backwardProp(XBatch,
+                                           Eta,
+                                           YBatch)
+                
+                # update gradients using the specified method
+                self.updateGLMParams(DCache)
+                
+                if ((i+1) % displaySteps) == 0:
+                    averageRecentLoss = recentLoss / displaySteps
+                    lossHistory.append(averageRecentLoss)
+                    recentLoss = 0
+                    print('Epoch: ',str(epoch+1),'/',str(nEpochs))
+                    print('Batch: ',str(i+1),'/',str(nBatches))
+                    print('Loss averaged over last ',str(displaySteps),
+                          ' batches: ',str(averageRecentLoss))
+                    print('---------------------------------------------------')
+        
+        # announce end of training
+        self.trained = True
+        print('---------------------------------------------------')
+        print('Training finished.')
+        print('nEpochs:',str(nEpochs))
+        print('Optimizer used:',str(self.most_recent_optimizer_used))
+        print('batchSize:',str(batchSize))
+        
+        self.lossHistory = lossHistory
+        
+        return 
