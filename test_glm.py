@@ -38,19 +38,42 @@ noise = np.random.rand(n,1) * noise_stretch
                                
 # create response as actual samples from constructed poissons, using the specs
 # set so far
-Y_means = np.exp(np.dot(X,beta_true.T) + intercept_true) + noise
-Y = np.random.poisson(lam=Y_means)
+Y_means = np.exp(np.dot(X,beta_true.T) + intercept_true) #+ noise
+#Y = np.random.poisson(lam=Y_means)
+Y = Y_means
 
 assert(X.shape[0] == Y.shape[0])
 
 # split data for modelling
 X_train, Y_train = X[1:int(n*0.8),], Y[1:int(n*0.8),]
-X_test, Y_test = X[int(n*0.8)+1,], Y[int(n*0.8)+1,]
+X_test, Y_test = X[int(n*0.8)+1:,], Y[int(n*0.8)+1:,]
 
 # scale predictors
-scaler = StandardScaler.fit(X_train)
+scaler = StandardScaler().fit(X_train)
 
 X_train_st = scaler.transform(X_train)
 X_test_st = scaler.transform(X_test)
 
 # [2] Train model
+
+nEpochs=250
+batchSize=15
+optimizer='sgd'
+eta=0.01
+gamma=0.99
+epsilon=0.0000001
+lamda=0
+displaySteps=50
+  
+glm_poisson = GLM("poisson")
+
+glm_poisson.trainGLM(X=X_train_st,
+                     Y=Y_train,
+                     nEpochs=nEpochs,
+                     batchSize=batchSize,
+                     optimizer=optimizer,
+                     eta=eta,
+                     gamma=gamma,
+                     epsilon=epsilon,
+                     lamda=lamda,
+                     displaySteps=displaySteps)

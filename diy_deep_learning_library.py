@@ -76,7 +76,7 @@ def sigmoidLoss(P,Y):
 def l2Loss(P,Y):
     return 0.5 * (np.linalg.norm(P - Y,ord=2) ** 2) / P.shape[0]
 
-def getBatches(self,X,Y,batchSize):
+def getBatches(X,Y,batchSize):
     '''Sample randomly from X and Y, then yield batches.'''
     nData = X.shape[0]
     shuffledIndices = np.arange(nData)
@@ -1617,8 +1617,11 @@ class GLM(object):
         # canonical link & inverse link functions associated with specified family
         self.link = self._get_canonical_link(family)
         self.inverse_link = self._get_inverse_canonical_link(family)
-        self.b = self._get_family_b_c(family)['b']
-        self.c = self._get_family_b_C(family)['c']
+        
+        family_functions = self._get_family_functions(family)
+        self.b = family_functions['b']
+        self.b_prime = family_functions['b_prime']
+        self.c = family_functions['c']
         
         # weights (=beta) and bias (=beta_0)
         self.Weight = None
@@ -1659,17 +1662,18 @@ class GLM(object):
             
         return inverse_link
     
-    def _get_family_b_c(self,
+    def _get_family_functions(self,
                         family):
         '''Helper function that returns the b and c term of the specified member of the exponential distribution family.'''
         
         assert family in ("poisson")#,"normal","binomial","gamma")
         
         if family == "poisson":
-            b = lambda theta: np.exp(theta)
+            b = np.exp
+            b_prime = np.exp
             c = lambda y, xi: 0
             
-        return {'b':b,'c':c}
+        return {'b':b,'b_prime':b_prime,'c':c}
         
     def forwardProp(self,
                      X,
@@ -1681,7 +1685,7 @@ class GLM(object):
         assert self.Weight != None and self.bias != None
         
         # calculate linear predictor eta
-        Eta = np.dot(X,self.Weight) + self.bias
+        Eta = np.dot(X,self.Weight.T) + self.bias
                     
         if apply_inverse_link:
             P = self.inverse_link(Eta)
@@ -1698,8 +1702,8 @@ class GLM(object):
         and returns them in the common format Dcache.'''
         
         # calculate gradients for weights and bias
-        DWeight = np.multiply(X,Y - Eta)
-        Dbias = Y - Eta
+        DWeight = -np.mean(np.multiply(X,Y - self.b_prime(Eta)),axis=0).reshape(1,-1)
+        Dbias = -np.mean(Y - self.b_prime(Eta),axis=0).reshape(1,-1)
         
         DCache = {'DWeight':DWeight,
                   'Dbias':Dbias}
@@ -1723,8 +1727,8 @@ class GLM(object):
                              n_predictors):
         '''Helper function that initializes model's weights and bias term.'''
         
-        self.Weight = np.random.randn(n_predictors,1) * 1 / (n_predictors + 1)
-        self.bias = np.zeros((1,1))
+        self.Weight = np.random.randn(1,n_predictors) * 1 / (n_predictors + 1)
+        self.bias = np.ones((1,1))
         
     def loss(self,
              Eta,
@@ -1732,7 +1736,7 @@ class GLM(object):
         '''Calculcates the loss function, i.e. the mean of the negative log-likelihood.'''
         
         # NOTE: this needs to be updated to non-poisson dists - need to add the c term
-        average_logloss = np.mean(self.b(Eta) - np.multiply(YBatch,Eta),axis=1)
+        average_logloss = np.mean(self.b(Eta) - np.multiply(YBatch,Eta),axis=0)
         
         return average_logloss
         
@@ -1770,12 +1774,21 @@ class GLM(object):
         # initialize weights and bias term
         self.initializeWeightBias(n_predictors = X.shape[1])
         
+        #print("Shape of beta:",self.Weight.shape)
+        #print("Shape of beta_0:",self.bias.shape)
+        
         # execute training
         for epoch in range(nEpochs):
             for i,(XBatch,YBatch,nBatches) in enumerate(getBatches(X,Y,batchSize)):
+                
+                #print("Shape of XBatch:",XBatch.shape)
+                #print("Shape of YBatch:",YBatch.shape)
+                
                 # calculate linear predictor for loss function progress report
                 Eta = self.forwardProp(XBatch,
                                        apply_inverse_link=False)
+                
+                #print("Shape of Eta:",Eta.shape)
                 
                 # calculate this batch's loss function and update
                 batchLoss = self.loss(Eta,YBatch)
@@ -1786,6 +1799,10 @@ class GLM(object):
                                            Eta,
                                            YBatch)
                 
+                #print("Shape of DCache's DWeight:", DCache['DWeight'].shape)
+                #print("Shape of DCache's Dbias:", DCache['Dbias'].shape)
+                #print("=============================")
+                
                 # update gradients using the specified method
                 self.updateGLMParams(DCache)
                 
@@ -1795,6 +1812,7 @@ class GLM(object):
                     recentLoss = 0
                     print('Epoch: ',str(epoch+1),'/',str(nEpochs))
                     print('Batch: ',str(i+1),'/',str(nBatches))
+                    print('Weight: ',str(self.Weight))
                     print('Loss averaged over last ',str(displaySteps),
                           ' batches: ',str(averageRecentLoss))
                     print('---------------------------------------------------')
@@ -1809,4 +1827,4 @@ class GLM(object):
         
         self.lossHistory = lossHistory
         
-        return 
+        return 0
