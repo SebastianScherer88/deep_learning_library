@@ -30,7 +30,7 @@ X = np.random.randn(n,5) * predictor_sds + predictor_means
                    
 # set true linear coefficients
 beta_true = np.array([4.2,-2,3,-0.7,0.58]).reshape(1,-1)
-intercept_true = jitter_mean = 8
+intercept_true = jitter_mean = -2
 
 # prep some random noise from uniform [0,1] * skew + mean
 noise_stretch = 1.6
@@ -56,14 +56,14 @@ X_test_st = scaler.transform(X_test)
 
 # [2] Train model
 
-nEpochs=250
-batchSize=15
+nEpochs=10
+batchSize=20
 optimizer='sgd'
 eta=0.01
 gamma=0.99
 epsilon=0.0000001
 lamda=0
-displaySteps=50
+displaySteps=25
   
 glm_poisson = GLM("poisson")
 

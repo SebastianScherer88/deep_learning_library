@@ -1651,13 +1651,13 @@ class GLM(object):
                                     family):
         '''Helper function that returns the inverse of the canonical link function associated with the given distribution type'''
         
-        assert family in ("poisson","normal","binomial","gamma")
+        assert family in ("poisson","gaussian","bernoulli","gamma")
         
         if (family in "poisson","gamma"):
             inverse_link = np.exp
-        elif family == "normal":
+        elif family == "gaussian":
             inverse_link = np.identity
-        elif family == "binomial":
+        elif family == "bernoulli":
             inverse_link = lambda mu: np.exp(mu) / (1 + np.exp(mu)) # inverse logit
             
         return inverse_link
@@ -1671,6 +1671,14 @@ class GLM(object):
         if family == "poisson":
             b = np.exp
             b_prime = np.exp
+            c = lambda y, xi: 0
+        elif family == 'gaussian':
+            b = lambda theta: 1/2 * theta ** 2
+            b_prime = np.identity
+            c = lambda y, xi: 0
+        elif family == 'bernoulli':
+            b = lambda theta: np.log(1 + np.exp(theta))
+            b_prime = lambda theta: np.exp(theta) / (1 + np.exp(theta))
             c = lambda y, xi: 0
             
         return {'b':b,'b_prime':b_prime,'c':c}
@@ -1746,7 +1754,7 @@ class GLM(object):
         DeltaWeight, DeltaBias = self.optimizer.get_parameter_updates(self.Weight,
                                                                       self.bias,
                                                                       Dcache)
-        
+            
         # update parameters with respective updates obtained from optimizer
         self.Weight += direction_coeff * DeltaWeight
         self.bias += direction_coeff * DeltaBias
@@ -1774,21 +1782,13 @@ class GLM(object):
         # initialize weights and bias term
         self.initializeWeightBias(n_predictors = X.shape[1])
         
-        #print("Shape of beta:",self.Weight.shape)
-        #print("Shape of beta_0:",self.bias.shape)
-        
         # execute training
         for epoch in range(nEpochs):
             for i,(XBatch,YBatch,nBatches) in enumerate(getBatches(X,Y,batchSize)):
                 
-                #print("Shape of XBatch:",XBatch.shape)
-                #print("Shape of YBatch:",YBatch.shape)
-                
                 # calculate linear predictor for loss function progress report
                 Eta = self.forwardProp(XBatch,
                                        apply_inverse_link=False)
-                
-                #print("Shape of Eta:",Eta.shape)
                 
                 # calculate this batch's loss function and update
                 batchLoss = self.loss(Eta,YBatch)
@@ -1798,10 +1798,6 @@ class GLM(object):
                 DCache = self.backwardProp(XBatch,
                                            Eta,
                                            YBatch)
-                
-                #print("Shape of DCache's DWeight:", DCache['DWeight'].shape)
-                #print("Shape of DCache's Dbias:", DCache['Dbias'].shape)
-                #print("=============================")
                 
                 # update gradients using the specified method
                 self.updateGLMParams(DCache)
