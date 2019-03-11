@@ -29,24 +29,33 @@ predictor_sds = np.array([2,0.1,0.3,4,0.8]).reshape(1,-1)
 X = np.random.randn(n,5) * predictor_sds + predictor_means
                    
 # set true linear coefficients
-beta_true = np.array([4.2,-2,3,-0.7,0.58]).reshape(1,-1)
+beta_true = np.array([1.2,2,-0.3,-7,-10]).reshape(1,-1)
 intercept_true = jitter_mean = -2
 
 # prep some random noise from uniform [0,1] * skew + mean
 noise_stretch = 1.6
-noise = np.random.rand(n,1) * noise_stretch
+noise = (np.random.rand(n,1) - 0.5) * noise_stretch
                                
 # create response as actual samples from constructed poissons, using the specs
 # set so far
 Y_means = np.exp(np.dot(X,beta_true.T) + intercept_true) #+ noise
-#Y = np.random.poisson(lam=Y_means)
-Y = Y_means
+
+# large values create issues when sampling from the poisson, so filter those out
+mean_max = 10
+useful_obs_index = (Y_means < mean_max).reshape(-1)
+Y_means = Y_means[useful_obs_index,:]
+Y = np.random.poisson(lam=Y_means)
+
+X = X[useful_obs_index,:]
+
+n_new = Y_means.shape[0]
+#Y = Y_means
 
 assert(X.shape[0] == Y.shape[0])
 
 # split data for modelling
-X_train, Y_train = X[1:int(n*0.8),], Y[1:int(n*0.8),]
-X_test, Y_test = X[int(n*0.8)+1:,], Y[int(n*0.8)+1:,]
+X_train, Y_train = X[1:int(n_new*0.8),], Y[1:int(n_new*0.8),]
+X_test, Y_test = X[int(n_new*0.8)+1:,], Y[int(n_new*0.8)+1:,]
 
 # scale predictors
 scaler = StandardScaler().fit(X_train)
@@ -56,7 +65,7 @@ X_test_st = scaler.transform(X_test)
 
 # [2] Train model
 
-nEpochs=10
+nEpochs=30
 batchSize=20
 optimizer='sgd'
 eta=0.01

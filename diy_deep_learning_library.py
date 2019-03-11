@@ -1615,7 +1615,7 @@ class GLM(object):
         self.family = family
         
         # canonical link & inverse link functions associated with specified family
-        self.link = self._get_canonical_link(family)
+        #self.link = self._get_canonical_link(family)
         self.inverse_link = self._get_inverse_canonical_link(family)
         
         family_functions = self._get_family_functions(family)
@@ -1636,35 +1636,42 @@ class GLM(object):
                             family):
         '''Helper function that returns the canonical link function associated with the given distribution type'''
         
-        assert family in ("poisson","normal","binomial","gamma")
-        
-        if (family in "poisson","gamma"):
-            link = np.log
-        elif family == "normal":
-            link = np.identity
-        elif family == "binomial":
-            link = lambda eta: np.log(eta) - np.log(1 - eta) # logit
+        #assert family in ("poisson","normal","bernoulli","multi-bernoulli","gamma")
+       # 
+       # if (family in "poisson","gamma"):
+        #    link = np.log
+        #elif family == "normal":
+        #    link = np.identity
+        #elif family == "bernoulli":
+        #    link = lambda eta: np.log(mu) - np.log(1 - mu) # logit
+        #elif family == "multi-bernoulli":
             
-        return link
+            
+        #return link
     
     def _get_inverse_canonical_link(self,
                                     family):
         '''Helper function that returns the inverse of the canonical link function associated with the given distribution type'''
         
-        assert family in ("poisson","gaussian","bernoulli","gamma")
+        assert family in ("poisson","gaussian","bernoulli","multi-bernoulli","gamma")
         
         if (family in "poisson","gamma"):
             inverse_link = np.exp
         elif family == "gaussian":
             inverse_link = np.identity
         elif family == "bernoulli":
-            inverse_link = lambda mu: np.exp(mu) / (1 + np.exp(mu)) # inverse logit
+            inverse_link = lambda eta: np.exp(eta) / (1 + np.exp(eta)) # inverse logit = sigmoid
+        elif family == "multi-bernoulli":
+            inverse_link = softmax # vector-valued gradient of b
             
         return inverse_link
     
     def _get_family_functions(self,
                         family):
-        '''Helper function that returns the b and c term of the specified member of the exponential distribution family.'''
+        '''Helper function that returns the b and c term of the specified member of the exponential distribution family.
+        The b_prime is the same as the inverse link if the canonical link was chosen which is the only possible
+        setting at this point, but I chose to define them separately in case I want to add support for custom
+        link functions later.'''
         
         assert family in ("poisson")#,"normal","binomial","gamma")
         
@@ -1679,6 +1686,10 @@ class GLM(object):
         elif family == 'bernoulli':
             b = lambda theta: np.log(1 + np.exp(theta))
             b_prime = lambda theta: np.exp(theta) / (1 + np.exp(theta))
+            c = lambda y, xi: 0
+        elif family == 'multi-bernoulli':
+            b = lambda eta: np.log(np.sum(np.exp(eta),axis=1)) # heavily implied by the H2O docs; consistent with loglikelihood and choice of g^-1 = b'
+            b_prime = softmax # vector valued gradient of b
             c = lambda y, xi: 0
             
         return {'b':b,'b_prime':b_prime,'c':c}
@@ -1741,10 +1752,18 @@ class GLM(object):
     def loss(self,
              Eta,
              YBatch):
-        '''Calculcates the loss function, i.e. the mean of the negative log-likelihood.'''
+        '''Calculcates the loss function, i.e. the mean of the batch's negative log-likelihood.'''
         
-        # NOTE: this needs to be updated to non-poisson dists - need to add the c term
-        average_logloss = np.mean(self.b(Eta) - np.multiply(YBatch,Eta),axis=0)
+        # NOTE: this needs to be updated to non-poisson dists - need to add the c term; alternatively,
+        # add null&saturated model and display PoDE?
+        
+        # if using vectorized multi-bernoulli, collapse one-hot encoded arrays along column dimension
+        if self.family == "multi-bernoulli":
+            logloss_array = self.b(Eta) - sum(np.multiply(YBatch,Eta),axis=1)
+        else:
+            logloss_array = self.b(Eta) - np.multiply(YBatch,Eta)
+            
+        average_logloss = np.mean(logloss_array,axis=0)
         
         return average_logloss
         
