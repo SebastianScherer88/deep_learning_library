@@ -76,6 +76,22 @@ def sigmoidLoss(P,Y):
 def l2Loss(P,Y):
     return 0.5 * (np.linalg.norm(P - Y,ord=2) ** 2) / P.shape[0]
 
+def getOneHotY(model,y):
+    '''One hot vectorizes a target class index list into a [nData,nClasses] array.'''
+                
+    # if first time training on classification data with one-hot enabled, remember ordering of class labels used for training
+    if str(type(model.classes_ordered)) == "<class 'NoneType'>":
+        model.classes_ordered = np.unique(y).reshape(-1)
+            
+    # convert class labels into indices as specified in classes_ordered attribute
+    y_numeric = np.array([np.where(model.classes_ordered == y_i)[0][0] for y_i in y]).reshape(-1)
+        
+    # create one-hot encoded target matrix from class labels y and class label <-> class index assignment rule stored in classes_ordered attribute
+    nClasses = len(model.classes_ordered)
+    Y = np.eye(nClasses)[y_numeric]
+        
+    return Y
+
 def getBatches(X,Y,batchSize):
     '''Sample randomly from X and Y, then yield batches.'''
     nData = X.shape[0]
@@ -1094,18 +1110,7 @@ class FFNetwork(object):
     def oneHotY(self,y):
         '''One hot vectorizes a target class index list into a [nData,nClasses] array.'''
                 
-        # if first time training on classification data with one-hot enabled, remember ordering of class labels used for training
-        if str(type(self.classes_ordered)) == "<class 'NoneType'>":
-            self.classes_ordered = np.unique(y).reshape(-1)
-            
-        # convert class labels into indices as specified in classes_ordered attribute
-        y_numeric = np.array([np.where(self.classes_ordered == y_i)[0][0] for y_i in y]).reshape(-1)
-        
-        # create one-hot encoded target matrix from class labels y and class label <-> class index assignment rule stored in classes_ordered attribute
-        nClasses = len(self.classes_ordered)
-        Y = np.eye(nClasses)[y_numeric]
-        
-        return Y
+        return getOneHotY(self,Y)
     
     def initialize_layer_optimizers(self,optimizer,eta,gamma,epsilon,lamda,batchSize):
         '''Creates and attaches optimizer objects to all network layers carrying optimizable parameters'''
@@ -1631,6 +1636,7 @@ class GLM(object):
         self.optimizer = self.most_recent_optimizer_used = None
         self.trained = False
         self.lossHistory = None
+        self.classes_ordered = None
         
     def _get_canonical_link(self,
                             family):
@@ -1693,6 +1699,11 @@ class GLM(object):
             c = lambda y, xi: 0
             
         return {'b':b,'b_prime':b_prime,'c':c}
+
+    def _get_one_hot_y(self,
+			y):
+
+	return getOneHotY(self,y)
         
     def forwardProp(self,
                      X,
@@ -1721,7 +1732,15 @@ class GLM(object):
         and returns them in the common format Dcache.'''
         
         # calculate gradients for weights and bias
-        DWeight = -np.mean(np.multiply(X,Y - self.b_prime(Eta)),axis=0).reshape(1,-1)
+	# for multi-bernoulli, use vectorized version of parameter gradient calculation
+	if self.family == "multi-bernoulli":
+		batch_size = X.shape[0]
+		beta_m = self.Weight.shape[0]
+		DWeight = - 1/batch_size * (np.dot((Y - self.b_prime(Eta)).T,X),axis=0).reshape(beta_m,-1)
+	else:
+	        DWeight = -np.mean(np.multiply(Y - self.b_prime(Eta),X),axis=0).reshape(1,-1)
+
+	# bias gradient calculation is flexible
         Dbias = -np.mean(Y - self.b_prime(Eta),axis=0).reshape(1,-1)
         
         DCache = {'DWeight':DWeight,
@@ -1746,8 +1765,13 @@ class GLM(object):
                              n_predictors):
         '''Helper function that initializes model's weights and bias term.'''
         
-        self.Weight = np.random.randn(1,n_predictors) * 1 / (n_predictors + 1)
-        self.bias = np.ones((1,1))
+	if str(type(model.classes_ordered)) == "<class 'NoneType'>":
+		n_out = 1
+	else:
+		n_out = length(self.classes_ordered)
+
+        self.Weight = np.random.randn(n_out,n_predictors) * 1 / (n_predictors + n_out)
+        self.bias = np.ones((1,n_out))
         
     def loss(self,
              Eta,
@@ -1798,6 +1822,13 @@ class GLM(object):
         # create and attach specified optimizers to layers, also keep one for later reference
         self.initialize_optimizers(optimizer,eta,gamma,epsilon,lamda,batchSize)
         
+	# initialize one hot mapping if needed
+	if self.family == "multi-bernoulli":
+		self._get_one_hot_y(Y)
+		n_classes = length(classes_ordered)
+	else:
+	    n_classes = 1
+
         # initialize weights and bias term
         self.initializeWeightBias(n_predictors = X.shape[1])
         
@@ -1805,6 +1836,10 @@ class GLM(object):
         for epoch in range(nEpochs):
             for i,(XBatch,YBatch,nBatches) in enumerate(getBatches(X,Y,batchSize)):
                 
+		# apply one hot mapping if needed
+		if self.family == "multi-bernoulli":
+		    YBatch = self._get_one_hot_y(YBatch)
+
                 # calculate linear predictor for loss function progress report
                 Eta = self.forwardProp(XBatch,
                                        apply_inverse_link=False)
