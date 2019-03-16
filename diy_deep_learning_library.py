@@ -1167,7 +1167,17 @@ class FFNetwork(object):
         
         P = self.forwardProp(X)
         
-        return np.argmax(P,axis=1).reshape(-1,1)
+        # if classification model, return class array of shape (m,1)
+        if not str(type(self.classes_ordered)) == "<class 'NoneType'>":
+            # get indices (w.r.t classes_ordered ordering) of classes with max cond. prob.
+            class_inds = np.argmax(P,axis=1).reshape(-1)
+            # get predicted class labels in column array
+            P_class = self.classes_ordered[class_inds].reshape(-1,1)
+            
+            return P_class
+        # if regression model, just return P
+        else:
+            return P
     
 #----------------------------------------------------
 # [10] define genetic algorithm
