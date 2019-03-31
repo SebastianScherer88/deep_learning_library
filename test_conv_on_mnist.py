@@ -59,7 +59,7 @@ stride2 = 2
 padding2 = 'valid'
 
 kernelSize3 = 5
-channels3 = 16
+channels3 = 10
 stride3 = 1
 padding3 = 'valid'
 
@@ -67,7 +67,7 @@ poolingSize4 = 2
 stride4 = 2
 padding4 = 'valid'
 
-n5 = 400
+#n5 = 400
 
 n6 = 84
 
@@ -96,9 +96,9 @@ neuralNet.addPoolingLayer(poolingHeight=poolingSize4,
                        padding=padding4,
                        poolingType='max')
 
-neuralNet.addConvToFCReshapeLayer(n5)
+neuralNet.addFlattenConvLayer(collapse = 'mean',activation = 'tanh')
 
-neuralNet.addFCLayer(n6,activation='tanh')
+#neuralNet.addFCLayer(n6,activation='tanh')
 
 neuralNet.addFCLayer(n7,activation='softmax')
 
@@ -112,13 +112,13 @@ print(neuralNet)
 # ---------------------------------
 
 # train network
-nEpochs = 2
+nEpochs = 5
 learning_rate = 0.5
 regularization_param = 0.1
 momentum_param = 0.3
 optimizer = 'sgd'
 batchSize = 50
-displaySteps = 50
+displaySteps = 25
 oneHotY = True
 
 neuralNet.trainNetwork(X_train,y_train,
