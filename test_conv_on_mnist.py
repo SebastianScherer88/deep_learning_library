@@ -67,7 +67,7 @@ poolingSize4 = 2
 stride4 = 2
 padding4 = 'valid'
 
-n5 = 400
+#n5 = 400
 
 n6 = 84
 
@@ -96,7 +96,7 @@ neuralNet.addPoolingLayer(poolingHeight=poolingSize4,
                        padding=padding4,
                        poolingType='max')
 
-neuralNet.addConvToFCReshapeLayer(n5)
+neuralNet.addFlattenConvLayer()
 
 neuralNet.addFCLayer(n6,activation='tanh')
 

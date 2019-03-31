@@ -814,7 +814,12 @@ class FlattenConv(object):
             # collapse along channel dimension, get rid of bogus dimension
             Z_c = np.mean(A_p,axis=(2,3))[:,:,0]
             
-        A_c = self.activation(Z_c)
+        # calculate this layer's activation in case of relu activaions
+        if self.activation[1]=='relu':
+            A_c = self.activation[0](Z_c,self.leak)
+        # calcualte this layer's activation for non-relu activation types
+        else:
+            A_c = self.activation[0](Z_c)
             
         #print("From within reshape (conv -> fc) layer's forwardProp:")
         #print("Shape of previous layer's activation:",A_p.shape)
