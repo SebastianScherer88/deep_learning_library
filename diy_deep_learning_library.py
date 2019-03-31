@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Mar 23 23:03:04 2019
+
+@author: bettmensch
+"""
+
 # contains the dependencies, utils and main classes necessary to use diy deep learning library
 #
 # Utils/dependencies
@@ -30,6 +37,8 @@
 import numpy as np
 import pandas as pd
 from functools import partial
+import os
+import pickle
 
 #----------------------------------------------------
 # [1] Define some computational util functions
@@ -107,6 +116,31 @@ def getBatches(X,Y,batchSize):
                           YShuffled[iBatch*batchSize:(iBatch+1)*batchSize])
     
         yield XBatch, YBatch, nBatches
+        
+def save_model(model,save_dir,model_name,verbose = True):
+    '''Helper function to save trained models for later use.'''
+    
+    # if directory doesnt exist already, create it
+    if (not os.path.isdir(save_dir)):
+        if verbose:
+            print("Directory " + str(save_dir) + " doesnt exist yet and will be created.")
+            
+        os.mkdir(save_dir)
+        
+    # create save path with specified name
+    full_save_path = os.path.join(save_dir,model_name)
+    
+    # save model as pickled object file
+    if verbose:
+        print("Saving model object in " + str(full_save_path))
+    
+    with open(full_save_path,'wb') as saved_model_file:
+        pickle.dump(model,saved_model_file)
+        
+    if verbose:
+        print("Finished saving model object in " + str(full_save_path))
+        
+    return full_save_path
     
 class SGD(object):
     '''Class representing the stochastic gradient descent with momentum algorithm'''
@@ -723,18 +757,38 @@ class FcToConv(object):
 # [6] define convolution to fully connected reshaping layer class
 #----------------------------------------------------
 
-class ConvToFC(object):
+class FlattenConv(object):
     '''Transitional layer handling reshaping between convlayer activations -> fcLayer activations,
     and fcLayer activation derivatives -> convLayer activation derivatives.'''
     
-    def __init__(self,n):
+    def __init__(self,collapse=None,activation='identity',leak=0):
+        
+        assert activation in ['tanh','sigmoid','relu','identity','softmax']
+        
+        if activation == 'tanh':
+            self.activation = (tanh,activation)
+            self.Dactivation = Dtanh
+        elif activation == 'sigmoid': # possibly output layer, attach loss function just in case
+            self.activation = (sigmoid,activation)
+            self.Dactivation = Dsigmoid
+        elif activation == 'relu':
+            self.leak = leak
+            self.activation = (relu,activation)
+            self.Dactivation = Drelu
+        elif activation == 'identity':
+            self.activation = (identity,activation)
+            self.Dactivation = Didentity
+        elif activation == 'softmax': # definitely output layer, so no need for Dactivation
+            self.activation = (softmax,activation)
 
         self.cache = {'A':None,'DZ':None}
         self.previousLayer = None
         self.nextLayer = None
         
         self.sizeIn = None
-        self.sizeOut = [n]
+        assert collapse in ('mean',None)
+        self.collapse = collapse
+        self.sizeOut = None
         
         # set up optimization configs
         self.has_optimizable_params = False
@@ -752,7 +806,16 @@ class ConvToFC(object):
         A_p = self.previousLayer.cache['A']
         batchSize = A_p.shape[0]
         #A_c = A_p.reshape([batchSize].extend(self.sizeOut))
-        A_c = A_p.reshape([batchSize,self.sizeOut[0]])
+        
+        if self.collapse == None:
+            # unravel image tensor while retaining batch size dimension
+            Z_c = A_p.reshape([batchSize,self.sizeOut[0]])
+        elif self.collapse == 'mean':
+            # collapse along channel dimension, get rid of bogus dimension
+            Z_c = np.mean(A_p,axis=(2,3))[:,:,0]
+            
+        A_c = self.activation(Z_c)
+            
         #print("From within reshape (conv -> fc) layer's forwardProp:")
         #print("Shape of previous layer's activation:",A_p.shape)
         #print("Shape of current layer's activation:",A_c.shape)
@@ -761,25 +824,49 @@ class ConvToFC(object):
         
     def getDZ_c(self,DA_c):
         # calculates this layer's DZ. gets called from next layer in network during backprop
-        batchSize = DA_c.shape[0]
-        #dzShape = [batchSize].extend(self.sizeIn).extend(1)
-        dzShape = [batchSize,self.sizeIn[0],self.sizeIn[1],self.sizeIn[2],1]
-        self.cache['DZ'] = DA_c.reshape(dzShape)
+        A_c = self.cache['A']
+        if self.activation[1]=='relu':
+            self.cache['DZ'] = np.multiply(self.Dactivation(A_c,self.leak),DA_c)
+        else:
+            self.cache['DZ'] = np.multiply(self.Dactivation(A_c),DA_c)
         
     def backwardProp(self):
         # get stored activation values
         DZ_c = self.cache['DZ']
+        
+        #get some dimension parameters
+        batchSize = DZ_c.shape[0]
+        channels_p, width_p, height_p = self.sizeIn
+        shape_DA_p = [batchSize,channels_p,width_p,height_p,1]
+        
         # calculate DZ_p, i.e. DZ of previous layer in network
-        DA_p = DZ_c
+        if self.collapse == None:            
+            DA_p = DZ_c.reshape(shape_DA_p)
+        elif self.collapse == 'mean':
+            DZcDAp = np.ones(shape_DA_p) / (width_p * height_p)
+            DA_p = np.multiply(DZ_c[:,:,np.newaxis,np.newaxis,np.newaxis], DZcDAp)
+            
         self.previousLayer.getDZ_c(DA_p)
         
         return
     
     def makeReady(self,previousLayer=None,nextLayer=None):
+        '''Make layer aware of surrounding layers where appropriate, and sanity
+        check size parameters.'''
+        
+        # get neighbouring layers
         self.previousLayer = previousLayer
         self.sizeIn = self.previousLayer.sizeOut
         
         self.nextLayer = nextLayer
+        
+        # sanity check of parameters being passed through
+        if self.collapse == None:
+            # ensure dimensions are compatible with unraveling of input picture
+            self.sizeOut = [np.product(self.sizeIn)]
+        elif self.collapse in ('mean','max'):
+            # ensre dimensions are compatible with collapsing of input picture around channel axis
+            self.sizeOut == [self.sizeIn[0]]
 
 #----------------------------------------------------
 # [7] define dropout layer class
@@ -1110,7 +1197,7 @@ class FFNetwork(object):
     def oneHotY(self,y):
         '''One hot vectorizes a target class index list into a [nData,nClasses] array.'''
                 
-        return getOneHotY(self,Y)
+        return getOneHotY(self,y)
     
     def initialize_layer_optimizers(self,optimizer,eta,gamma,epsilon,lamda,batchSize):
         '''Creates and attaches optimizer objects to all network layers carrying optimizable parameters'''
@@ -1157,7 +1244,7 @@ class FFNetwork(object):
                 layer.updateLayerParams(layerDcache,
                                         direction_coeff=reinforcement_coeff)
             
-    def predict(self,X):
+    def predict(self,X,distribution = False):
         '''If model is trained, performs forward prop and returns the prediction array.'''
         
         if not self.trained:
@@ -1167,17 +1254,23 @@ class FFNetwork(object):
         
         P = self.forwardProp(X)
         
-        # if classification model, return class array of shape (m,1)
-        if not str(type(self.classes_ordered)) == "<class 'NoneType'>":
+        # if classification model, default mode is to return argmax class array of shape (m,1)
+        if (not str(type(self.classes_ordered)) == "<class 'NoneType'>") and (distribution == False):
             # get indices (w.r.t classes_ordered ordering) of classes with max cond. prob.
             class_inds = np.argmax(P,axis=1).reshape(-1)
             # get predicted class labels in column array
             P_class = self.classes_ordered[class_inds].reshape(-1,1)
             
             return P_class
-        # if regression model, just return P
+        # if classification model but distribution specifically specified OR regression model, return outputs as is
         else:
+            #print("AAA")
             return P
+        
+    def save(self,save_dir,model_name,verbose = True):
+        '''Save model object as pickled file by calling the algorithm generic save function defined in section [1].'''
+        
+        return save_model(model = self, save_dir = save_dir, model_name = model_name, verbose = verbose)
     
 #----------------------------------------------------
 # [10] define genetic algorithm
@@ -1578,10 +1671,11 @@ class PG(object):
         
     def train_network(self,
                       episode_generator,
-                      n_episodes = 100000,
+                      n_episodes = 1000,
                       learning_rate = 0.01,
                       episode_batch_size = 10,
                       verbose = False,
+                      display_steps = 1,
                       reward = 1,
                       regret = 1):
         '''Trains network using policy gradients based on samples produced by the 
@@ -1596,25 +1690,38 @@ class PG(object):
             if verbose:
                 print("Running simulation to generate data | Episode " + str(i_episode+1) + " / " + str(n_episodes) + ".")
             # create this episodes training data and reinforcement coefficient
-            X_ep, y_ep, r_ep = episode_generator()
+            X_ep, y_ep, r_ep = episode_generator(self.ffnetwork)
             # convert y_e to one hot encoded class labels
             Y_ep = self.ffnetwork.oneHotY(y_ep)
             # apply reward/regret scaling to reinforcment coefficient
             if r_ep < 0:
                 r_ep *= regret
-            else:
+            elif r_ep > 0:
                 r_ep *= reward
+            else:
+                print("Simulation returned trivial reward. No parameter update needed | Episode " + str(i_episode+1) + " / " + str(n_episodes) + ".")
+                continue
             # --- train network on current batch
             n_batches = (X_ep.shape[0] // episode_batch_size) + 1
             if verbose:
-                print("Processing simulation data and updating AI | Episode" + str(i_episode+1) + " / " + str(n_episodes) + ".")
+                print("Processing simulation data and updating AI | Episode " + str(i_episode+1) + " / " + str(n_episodes) + ".")
             for i_batch in range(n_batches):
+                # progress statement if required
+                if ((i_batch+1) % display_steps) == 0 and verbose:
+                    print('Episode: ',str(i_episode+1),'/',str(n_episodes))
+                    print('Batch: ',str(i_batch+1),'/',str(n_batches))
+                    print('---------------------------------------------------')
                 #  forward prop
                 _ = self.ffnetwork.forwardProp(X_ep)
                 # backward prop including parameter updates
                 self.ffnetwork.backwardProp(Y_ep,reinforcement_coeff=r_ep)
                 
         return self.ffnetwork
+    
+    def save_network(self,save_dir,model_name,verbose = True):
+        '''Save attached neural net model object as pickled file by calling the algorithm generic save function defined in section [1].'''
+        
+        return save_model(model = self.ffnetwork, save_dir = save_dir, model_name = model_name, verbose = verbose)
     
 #----------------------------------------------------
 # [13] define GLM class for one-dimensional regression/classification
@@ -1712,8 +1819,8 @@ class GLM(object):
 
     def _get_one_hot_y(self,
 			y):
-
-	return getOneHotY(self,y)
+        
+        return getOneHotY(self,y)
         
     def forwardProp(self,
                      X,
@@ -1742,15 +1849,15 @@ class GLM(object):
         and returns them in the common format Dcache.'''
         
         # calculate gradients for weights and bias
-	# for multi-bernoulli, use vectorized version of parameter gradient calculation
-	if self.family == "multi-bernoulli":
-		batch_size = X.shape[0]
-		beta_m = self.Weight.shape[0]
-		DWeight = - 1/batch_size * (np.dot((Y - self.b_prime(Eta)).T,X),axis=0).reshape(beta_m,-1)
-	else:
-	        DWeight = -np.mean(np.multiply(Y - self.b_prime(Eta),X),axis=0).reshape(1,-1)
+        # for multi-bernoulli, use vectorized version of parameter gradient calculation
+        if self.family == "multi-bernoulli":
+            batch_size = X.shape[0]
+            beta_m = self.Weight.shape[0]
+            DWeight = - 1/batch_size * np.sum(np.dot((Y - self.b_prime(Eta)).T,X),axis=0).reshape(beta_m,-1)
+        else:
+            DWeight = -np.mean(np.multiply(Y - self.b_prime(Eta),X),axis=0).reshape(1,-1)
 
-	# bias gradient calculation is flexible
+        # bias gradient calculation is flexible
         Dbias = -np.mean(Y - self.b_prime(Eta),axis=0).reshape(1,-1)
         
         DCache = {'DWeight':DWeight,
@@ -1775,10 +1882,10 @@ class GLM(object):
                              n_predictors):
         '''Helper function that initializes model's weights and bias term.'''
         
-	if str(type(model.classes_ordered)) == "<class 'NoneType'>":
-		n_out = 1
-	else:
-		n_out = length(self.classes_ordered)
+        if str(type(model.classes_ordered)) == "<class 'NoneType'>":
+            n_out = 1
+        else:
+            n_out = length(self.classes_ordered)
 
         self.Weight = np.random.randn(n_out,n_predictors) * 1 / (n_predictors + n_out)
         self.bias = np.ones((1,n_out))
@@ -1832,12 +1939,12 @@ class GLM(object):
         # create and attach specified optimizers to layers, also keep one for later reference
         self.initialize_optimizers(optimizer,eta,gamma,epsilon,lamda,batchSize)
         
-	# initialize one hot mapping if needed
-	if self.family == "multi-bernoulli":
-		self._get_one_hot_y(Y)
-		n_classes = length(classes_ordered)
-	else:
-	    n_classes = 1
+        # initialize one hot mapping if needed
+        if self.family == "multi-bernoulli":
+            self._get_one_hot_y(Y)
+            n_classes = length(classes_ordered)
+        else:
+            n_classes = 1
 
         # initialize weights and bias term
         self.initializeWeightBias(n_predictors = X.shape[1])
@@ -1846,9 +1953,9 @@ class GLM(object):
         for epoch in range(nEpochs):
             for i,(XBatch,YBatch,nBatches) in enumerate(getBatches(X,Y,batchSize)):
                 
-		# apply one hot mapping if needed
-		if self.family == "multi-bernoulli":
-		    YBatch = self._get_one_hot_y(YBatch)
+                # apply one hot mapping if needed
+                if self.family == "multi-bernoulli":
+                    YBatch = self._get_one_hot_y(YBatch)
 
                 # calculate linear predictor for loss function progress report
                 Eta = self.forwardProp(XBatch,
@@ -1888,3 +1995,8 @@ class GLM(object):
         self.lossHistory = lossHistory
         
         return 0
+    
+    def save(self,save_dir,model_name,verbose = True):
+        '''Save model object as pickled file by calling the algorithm generic save function defined in section [1].'''
+        
+        return save_model(model = self, save_dir = save_dir, model_name = model_name, verbose = verbose)
