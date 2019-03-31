@@ -1074,14 +1074,14 @@ class FFNetwork(object):
         else:
             print('The network has already been fixated. No further layers can be added.')
         
-    def addConvToFCReshapeLayer(self,n):
+    def addFlattenConvLayer(self,collapse=None,activation='identity',leak=0):
         '''Adds a reshaping layer to the neural network. Necessary to link up a convolutional layer with a 
         subsequent fully connected layer.'''
         
         if not self.finalState:
             # if network has not been fixated yet, create convolution layer
             # and add to network
-            shapeConvolutionalToFullyConnected = ConvToFC(n)
+            shapeConvolutionalToFullyConnected = FlattenConv(collapse=collapse,activation=activation,leak=leak)
             self.layers.append(shapeConvolutionalToFullyConnected)
         else:
             print('The network has already been fixated. No further layers can be added.')
