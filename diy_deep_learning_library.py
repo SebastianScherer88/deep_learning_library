@@ -1694,6 +1694,7 @@ class PG(object):
                       n_episodes = 1000,
                       learning_rate = 0.01,
                       episode_batch_size = 10,
+                      multiply_episodes = 1,
                       verbose = False,
                       display_steps = 1,
                       reward = 1,
@@ -1721,20 +1722,32 @@ class PG(object):
             else:
                 print("Simulation returned trivial reward. No parameter update needed | Episode " + str(i_episode+1) + " / " + str(n_episodes) + ".")
                 continue
+            
+            # --- apply data multiplicator as needed
+            # build set of multiplied randomized indices
+            randomized_batch_index = np.random.permutation(np.array([i for i in range(X_ep.shape[0])]))
+            
             # --- train network on current batch
-            n_batches = (X_ep.shape[0] // episode_batch_size) + 1
-            if verbose:
-                print("Processing simulation data and updating AI | Episode " + str(i_episode+1) + " / " + str(n_episodes) + ".")
-            for i_batch in range(n_batches):
-                # progress statement if required
-                if ((i_batch+1) % display_steps) == 0 and verbose:
-                    print('Episode: ',str(i_episode+1),'/',str(n_episodes))
-                    print('Batch: ',str(i_batch+1),'/',str(n_batches))
-                    print('---------------------------------------------------')
-                #  forward prop
-                _ = self.ffnetwork.forwardProp(X_ep)
-                # backward prop including parameter updates
-                self.ffnetwork.backwardProp(Y_ep,reinforcement_coeff=r_ep)
+            for episode_copy in range(multiply_episodes):
+                
+                # randomize this copy of the episode data
+                randomized_batch_index = np.random.permutation(np.array([i for i in range(X_ep.shape[0])]))
+                X_ep, y_ep = X_ep[randomized_batch_index,], y_ep[randomized_batch_index,]
+                
+                n_batches = (X_ep.shape[0] // episode_batch_size) + 1
+                if verbose:
+                    print("Processing simulation data and updating AI | Copy " + str(episode_copy+1) + '/' + str(multiply_episodes) + " of Episode " + str(i_episode+1) + '/' + str(n_episodes) + ".")
+                for i_batch in range(n_batches):
+                    # progress statement if required
+                    if ((i_batch+1) % display_steps) == 0 and verbose:
+                        print('Episode: ',str(i_episode+1),'/',str(n_episodes))
+                        print('Epsiode copy: ',str(episode_copy+1),'/',str(multiply_episodes))
+                        print('Batch: ',str(i_batch+1),'/',str(n_batches))
+                        print('---------------------------------------------------')
+                    #  forward prop
+                    _ = self.ffnetwork.forwardProp(X_ep)
+                    # backward prop including parameter updates
+                    self.ffnetwork.backwardProp(Y_ep,reinforcement_coeff=r_ep)
                 
         return self.ffnetwork
     
